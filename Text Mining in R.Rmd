@@ -1,0 +1,91 @@
+---
+title: "Text Mining in R"
+author: "Angela Kang"
+date: "September 19, 2017"
+output: pdf_document
+---
+
+```{r echo = FALSE, warning = FALSE, message = FALSE}
+library(qdap)
+library(tm)
+```
+
+Text mining is the process of distilling actionable insights from text. The steps to text mining are as follows,
+
+\begin{itemize}
+  \item problem definition and specific goals
+  \item identify text to be collected
+  \item text organization
+  \item feature extraction
+  \item analysis
+  \item reach an insight, conclusion, produce a recommendation
+\end{itemize}
+
+Semantic parsing breaks down a sentence into parts (e.g. noun phrase, verb phrase, named entity, verb, article, etc.) in a tree structure - results in lots of features. In contrast the bag of words method doesn't care about the word type or order. They are just attributes of the document. The document will focus on the bag of words method. 
+
+The `qdap` library allows us to count the most frequent terms,
+
+```{r}
+text <- "DataCamp is the first online learning platform that focuses on building the best learning experience specifically for Data Science. We have offices in Boston and Belgium and to date, we trained over 250,000 (aspiring) data scientists in over 150 countries. These data science enthusiasts completed more than 9 million exercises. You can take free beginner courses, or subscribe for $25/month to get access to all premium courses."
+term_count <- freq_terms(text, 10)
+plot(term_count)
+```
+
+# Corpus 
+
+A corpus is a collection of documents and in the `tm` domain, `R` recognizes it as a data type. There are two kinds of the corpus data type, the permanent corpus, `PCorpus`, and the volatile corpus, `VCorpus`. In essence, the difference between the two has to do with how the collection of documents is stored in your computer. This document will focus on the volatile corpus, which is held in your computer's RAM rather than saved to disk, just to be more memory efficient.
+
+To make a volatile corpus, `R` needs to interpret each element in our vector of text as a document. And the `tm` package provides what are called `Source` functions to do just that! If our text data is contained in a vector we can use the source function called `VectorSource`. The output of this function is called a `Source` object. To create a volatile corpus we pass it to `VCorpus`.
+
+The VCorpus object is a nested list, or list of lists. At each index of the VCorpus object, there is a PlainTextDocument object, which is essentially a list that contains the actual text data (content), as well as some corresponding metadata (meta).
+
+Because another common text source is a data frame, there is a Source function called `DataframeSource` which treats the entire row as a complete document, so be careful you don't pick up non-text data like customer IDs when sourcing a document this way.
+
+# Preprocessing
+
+Before we do any analysis there are some common preprocessing functions that we can apply,
+
+\begin{itemize}
+  \item \verb`tolower` - makes all text lowercase
+  \item \verb`removePunctuation` - removes punctuation
+  \item \verb`removeNumbers` - removes numbers
+  \item \verb`stripWhiteSpace` - removes tabs and extra spaces
+  \item \verb`removeWords` - removes specified words
+  \item \verb`bracketX` - remove all text within brackets (e.g. "It's (so) cool" becomes "It's cool")
+  \item \verb`replace_number` - replace numbers with their word equivalents (e.g. "2" becomes "two")
+  \item \verb`replace_abbrevation` - replace abbreviations with their full text equivalents (e.g. "Sr" becomes "Senior")
+  \item \verb`replace_contration` - convert contractions back to their base words (e.g. "shouldn't" becomes "should not")
+  \item \verb`replace_symbol` - replace common symbols with their word equivalents (e.g. "$" becomes "dollar")
+\end{itemize}
+
+These functions are all applied to the corpus using the `tm_map` function. Another preprocessing step that can be applied is word stemming. In other words we aggregate words with the same base are considered as one term. 
+
+```{r}
+stem_words <- stemDocument(c("complicatedly", "complicated", "complication"))
+stem_words
+# Complete words using single word dictionary
+stemCompletion(stem_words, c("complicate"))
+```
+
+# Stop Words
+
+Words such as "I", "she'll", "the", etc. are frequently found but provide little information so we may want to remove them from our data. In the `tm` package, there are 174 stop words on this common list. In addition to the common words, depending on the analysis being performed you will likely need to add to this list. If analyzing tweets about coffee, all tweets contain "coffee" so we may want to leave these out to prevent overemphasis in a frequency analysis. Suppose we wanted to add "word1" and "word2" to the default list of English stop words, then we could write
+
+```{r eval = FALSE}
+all_stops <- c("word1", "word2", stopwords("en"))
+```
+
+Once you have a list of stop words that makes sense, you will use the `removeWords` function on your text. `removeWords` takes two arguments: the text object to which it's being applied and the list of words to remove.
+
+# Word Stemming
+
+ The tm package provides the stemDocument() function to get to a word's root. This function either takes in a character vector and returns a character vector, or takes in a PlainTextDocument and returns a PlainTextDocument.
+
+For example,
+
+stemDocument(c("computational", "computers", "computation"))
+
+returns "comput" "comput" "comput". But because "comput" isn't a real word, we want to re-complete the words so that "computational", "computers", and "computation" all refer to the same word, say "computer", in our ongoing analysis.
+
+We can easily do this with the stemCompletion() function, which takes in a character vector and an argument for the completion dictionary. The completion dictionary can be a character vector or a Corpus object. Either way, the completion dictionary for our example would need to contain the word "computer" for all the words to refer to it.
+

@@ -1,0 +1,126 @@
+---
+title: "Working with Dates and Times in R"
+author: "Angela Kang"
+date: "December 27, 2017"
+output: html_document
+---
+
+```{r echo = FALSE, message = FALSE, warning = FALSE}
+library(dplyr)
+library(lubridate)
+library(hms)
+```
+
+# Arithmetic with Dates and Times
+
+Months are a little tricky to perform arithmetic on. Notice that the below returns `NA` since the 31st of February does not exist.
+
+```{r}
+jan_31 <- ymd("2017-01-31")
+jan_31 + months(1)
+```
+
+In general `lubridate` returns the same day of the month in the next month. There are alternative addition and subtraction operators: `%m+%` and `%m-%` that have different behavior. Rather than returning an NA for a non-existent date, they roll back to the last existing date.
+
+```{r}
+month_seq <- 1:12 * months(1)
+
+jan_31 + month_seq
+jan_31 %m+% month_seq
+jan_31 %m-% month_seq
+```
+
+Use these operators with caution. Unlike `+` and `-`, you might not get `x` back from `x %m+% months(1) %m-% months(1)`. If you'd prefer that the date was rolled forward check out `add_with_rollback()` which has `roll_to_first` argument.
+
+## Intervals
+
+Intervals are a third option in `lubridate` for storing time spans. Rather than representing an amount of time, they have a specific start and end datetime. Intervals can be created either using the `interval()` function or `%--%` operator. We create the interval that the Beatles were active.
+
+```{r}
+beatles <- dmy("5 January 1961") %--% dmy("30 January 1969")
+```
+
+The start can be found using `int_start()` and end using `int_end()`. The length of the interval in seconds can be found using `int_length()` or you can specifically ask for the interval as a period `as.period()` or duration `as.duration()`.
+
+```{r}
+int_start(beatles)
+int_end(beatles)
+int_length(beatles)
+as.period(beatles)
+as.duration(beatles)
+```
+
+We can also determine if a datetime (or interval) falls within an interval using the `%within%` operator. It seems like Jimi Hendrix performed at Woodstock when the Beatles already stopped playing at concerts.
+
+```{r}
+hendrix_at_woodstock <- mdy("August 17 1969")
+hendrix_at_woodstock %within% beatles
+```
+
+To compare two intervals and see whether they overlap the `int_overlap()` function can be used. It seems like Beatles and Hendrix were once active at the same time.
+
+```{r}
+hendrix <- dmy("01 October 1966") %--% dmy("16 September 1970")
+int_overlaps(beatles, hendrix)
+```
+
+The following gives a guide on which kind of time span one should use.
+
+\begin{itemize}
+  \item Intervals - when you have a **start** and an **end**. Most specific way to represent a span of time since they retain information about the exact start and end moments.
+  \item Periods - when you are interested in **human units**
+  \item Durations - if you are interested in **seconds elapsed**
+\end{itemize}
+
+# Problems in Practice
+
+## Time Zones
+
+Timezones in `R` are set using character strings rather than the GMT format. To check the current timezone we can run the following code,
+
+```{r}
+Sys.timezone()
+```
+
+All timezones can be listed using the function `OlsonNames()`. This is used instead of GMT format to keep track of daylight savings throughout history for the given area. This is organized by the IANA. To change the timezone without changing the components of the datetime we can use the funciton `force_tz(datetime, tzone = )`. Sometimes we would like to simply view the datetime in a different timezone. To do this we use the function `with_tz()`. 
+
+```{r}
+x <- mdy_hm("June 11 2015 19:00")
+force_tz(x, tzone = "America/Edmonton")
+with_tz(x, tzone = "America/Edmonton")
+```
+
+If we ever have times without dates we use the `hms` package. 
+
+## Fast Parsing
+
+While `parse_date_time()` is a very flexible and forgiving way to import datetimes into `R` it can be a little slow. If dates are in a consistent format, there are ways to read them faster. The first uses the `fastPOSIXct()` function in the `fasttime` package which reads in dates formatted in the standard order: year, month, day, hour, minute, and second. 
+
+```{r}
+library(fasttime)
+fastPOSIXct("2003-02-27")
+```
+
+Another option is the `fast_strptime()` function in `lubridate`. It works a lot like `parse_date_time()`, but instead of an `order` argument, it takes a `format` argument which is a character describing how the dates are formatted. It is much less forgiving. The spacing and exact unit format must be specified. 
+
+```{r}
+x <- "2001-02-27"
+
+parse_date_time(x, order = "ymd")
+fast_strptime(x, format = "%Y-%m-%d")
+```
+
+`fast_strptime()` is much faster than `ymd_hms()` but just a little slower than `fasttime`
+
+## Exporting datetimes
+
+If you are saving a dataset with datetimes for future use, it's helpful to know `write_csv()` from `readr` package will write datetime out in ISO 8601 format, which means they are readily read in again with `read_csv()`.
+
+If we want to format datetimes in a specified manner we can use the `stamp()` function. It can take in a string with the date in our desired format and the function can then be applied to other date objects.
+
+```{r}
+my_stamp <- stamp("Tuesday October 10 2017")
+my_stamp(ymd("2003-02-27"))
+```
+
+If `stamp()` doesn't return the right format, pass a `format` argument explicitly. 

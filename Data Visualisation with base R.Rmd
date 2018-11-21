@@ -1,0 +1,237 @@
+---
+title: "Data Visualisation With Base R"
+author: "Angela Kang"
+date: "August 28, 2017"
+output: pdf_document
+---
+
+When we are first approached with a dataset graphical tools can allow quick insights to what is in the dataset. There are two main types of data visualisations:
+\begin{enumerate}
+  \item *Exploratory visualisations* help US understand the data - we try to keep as much detail as possible
+  \item *Explanatory visualisations* help OTHERS understand the data - requires editorial decisions. We highlight any features we want to emphasize and hide any that are extraneous
+\end{enumerate}
+
+# Base R Graphics
+
+In base `R` graphics there are two main types of functions. The first are high level functions such as `plot` which lay down the core of the visualisation. The second are low level functions such as `points`, `lines`, and `text` which add details to our high level functions. Sometimes we would like to add all our details through our low level functions and not plot anything initially in our high level function. In this case, the option `type = "n"` can be used. This option is especially useful is when we are plotting data from multiple sources on a common set of axes. In such cases, we can compute ranges for the x- and y-axes so that all data points will appear on the plot, and then add the data with subsequent calls to points() or lines() as appropriate.
+
+The text function is a low level function that can be varied in ways to provide clearer details. To define how the point is justified we change the `adj` argument in the `text` function, `adj = 0` specifies left-justification, `adj = 0.5` specifies middle-justification, and `adj = 1` specifies right-justification. Another parameter that can be specified is the `font` argument. `font = 1` is the default text font, `font = 2` specifies bold text, `font = 3` specifies italicized text, and `font = 4` specifies text that's both bold and italicized. `srt` is an argument that allows us to rotate the text. Specifying `srt = 90` causes the text to be rotated by 90 degrees counter-clockwise.
+
+The legend of a plot can also be altered using the `legend` function. There are some useful options we can add. The first argument can either be a coordinate or a simple string (e.g. `"topright"`) to specify the placement of the legend. 
+
+We can also alter the axis labels. To suppress the default axes when creating a plot we can specify `axes = FALSE`. Then, we can call the low-level graphics function `axis` to create axes the way we want. The `side` argument tells the function which axis to create (1 for below the plot, 2 for the left, 3 for the top, and 4 for the right). The `at` argument tells the function where tick-marks should be drawn. The `labels` argument defines labels for each of the tick marks.
+
+```{r}
+library(MASS)
+# Create a boxplot of sugars by shelf value, without axes
+boxplot(sugars~shelf, data = UScereal, axes = FALSE)
+
+# Add a default y-axis to the left of the boxplot
+axis(side = 2)
+
+# Add an x-axis below the plot, labelled 1, 2, and 3
+axis(side = 1, at = c(1,2,3))
+
+# Add a second x-axis above the plot
+axis(side = 3, at = c(1,2,3),
+     labels = c("floor","middle","top"))
+```
+
+To add a curved trend line we can use the function `supsmu`. To adjust how smooth we want the curve we can alter the `bass` argument from 0 to 10 where 10 is the smoothest.
+
+The function `par` is used to define global options. As an example, we can plot multiple graphs on a single pane using the `par()` function with its `mfrow` parameter (e.g. `par(mfrow = c(1, 2))` which would create a plot array with 1 row and 2 columns). Usually when this option is called the plots that are created attempts to take as much of the space as possible. So in our example the plots will look rectangular. To create square plots we require `par(pty = "s")`.
+```{r}
+# rectangular plots
+par(mfrow = c(1,2))
+plot(density(geyser$duration), main = "Duration")
+plot(density(geyser$waiting), main = "Waiting time")
+
+# square plots
+par(mfrow = c(1,2))
+par(pty = "s")
+plot(density(geyser$duration), main = "Duration")
+plot(density(geyser$waiting), main = "Waiting time")
+```
+
+For a greater flexibility in what our plot array looks like we can make use of the `layout` function. The function requires a layout matrix which can be seen as the plot pane, where a 0 represents empty space and other numbers represent the plot number, which is determined by the sequence of visualization function calls. The convenience function `layout.show` can be used to verify that the plot array has the shape you want.
+
+```{r}
+rowA <- c(1,1,1)
+rowB <- c(2,0,3)
+layoutVector <- c(rowA, rowA, rowB)
+layoutMatrix <- matrix(layoutVector, byrow = TRUE, nrow = 3)
+layoutMatrix
+layout(layoutMatrix)
+layout.show(n = 3) # See layout of all three plots
+```
+
+To create a log-log plot, simply add the argument `log = "xy"` to the `plot` function. Similarly, to only transform one variable we can alter the argument to either `log = "x"` or `log = "y"`.
+
+Pie charts are generally a poor choice to visualise data. Try bar charts instead.
+
+To make both sets of labels perpendicular to the axes add the argument `las = 2`. And `cex.name = 0.5` makes labels half the size. 
+
+The function `truehist` from the `MASS` package provides a scaled histogram to give an estimate of the probability density of our data. For a smoothed density plot we can overlay the function `lines(density())`.
+
+When checking whether our data follows a normal distribution we often refer to the QQ-plot. There are several implementations available in `R`, but the most convenient one is the `qqPlot` function in the `car` package.
+
+To save our plots as png files we can simply call the `png` function before we print any plots out, then exit the enviornment with the `dev.off` command.
+
+```{r eval = FALSE}
+png("SavedGraphicsFile.png")
+
+# Create the plot
+boxplot(sugars~shelf, data = UScereal, axes = FALSE)
+
+# Add title
+title("Sugar by shelf")
+
+dev.off()
+```
+
+
+
+**Visualising Relations Between Two Variables**
+There are four main types of plots that we can use to show the relationship between two variables,
+\begin{enumerate}
+  \item scatterplots
+  \item sunflowerplots
+  \item boxplots
+  \item mosaic plots
+\end{enumerate}
+
+The scatterplot is the simplest of the four, and can easily be generated from the `plot` function available in base `R`. The below shows the housing prices by number of rooms. Note the usage of the formula interface to define which variables we would like to plot.
+
+```{r}
+plot(medv ~ rm, data = Boston)
+```
+
+The sunflower plot is very similar to a scatterplot but it's used to show the prescence of repeated values. Each "petal" of the flowers represent an individual point.
+
+```{r}
+sunflowerplot(tax ~ rad, data = Boston)
+```
+
+Another option to show repeated points is to use jittering, which adds a small variation to the points in the x and y direction so repeated points will appear as clusters of nearby points.
+
+Both the scatterplot and sunflower plot are appropriate when both variables are numeric. If, instead, only one of the variables are numeric and the other is either categorical or numeric with limited values, a boxplot can be used instead. Boxplots show the distribution of the y variable over distinct levels  (10 or fewer) of the x variable. A useful option parameter is the `varwidth` argument which allows for variable-width boxplots that show the different sizes of the data subsets. Another useful option is `las = 1` which specifies horizontal labels for both axes.
+
+```{r}
+boxplot(crim ~ rad, data = Boston, varwidth = TRUE, log = "y", las = 1)
+```
+
+The last plot type, the mosaic plot, allows us to see the relationship between two categorical variables or two numeric variables that only take a few distinct values.
+
+```{r}
+mosaicplot(cyl ~ gear, data = mtcars)
+```
+
+
+**Visualising More Complex Relations Between Variables**
+The visualisations considered above are probable what we will most conider during exploratory analysis, but there may be cases when we would like to visualise more complex relationships. A bagplot is a two-dimensional boxplot and shows us information about a joint distribution between two variables.
+
+```{r}
+library(aplpack)
+bagplot(Cars93$Min.Price, Cars93$Max.Price, cex = 1.2)
+```
+
+The correlation coefficient is a value from -1 to 1 that describes the relationship between two numerical variables. The `corrplot` function in the `corrplot` package allows us to visualise this relationship between as many of the variables as we want.
+
+```{r}
+mtCor <- cor(mtcars)
+library(corrplot)
+corrplot(mtCor, method = "ellipse")
+```
+
+Decision tree models can also be displayed. To follow along, if a point follows the decision in any of nodes, it follows the left branch, else, it follows the right.
+
+```{r}
+library(rpart)
+treeModel <- rpart(mpg ~ ., data = mtcars)
+plot(treeModel)
+text(treeModel, cex = 1.6, col = "red", xpd = TRUE)
+```
+
+For multiple scatterplots in the same axes, we can use the base `R` function `matplot` where we specify a single variable for x and a vector of variables for y. By default, the points in these scatterplots are represented by the numbers 1 through n, where n is the total number of scatterplots included.
+
+```{r}
+matplot(UScereal$calories, UScereal[c("protein","fat","fibre")], xlab = "calories", ylab = "")
+```
+
+Wordclouds display words in varying sizes depending on their frequency. These are easy to generate in `R` using the `wordcloud` package. One most be mindful about the number of words that you include in the wordcloud so as not to make it too cluttered.
+
+```{r}
+library(wordcloud)
+# Create mfr_table of manufacturer frequencies
+mfr_table <- table(Cars93$Manufacturer)
+
+# Create the default wordcloud from this table
+wordcloud(words = names(mfr_table), 
+          freq = as.numeric(mfr_table), 
+          scale = c(2,0.25))
+```
+
+
+**Creating and Saving More Complex Plots**
+While plots on their own are usually just side effects, some also have return values which can be captured using an assignmnet statement. An example is the `barplot` function, which gives the numeric value for the center of each plot. These return values can be especially useful when we want to overlay text on the bars of a horizontal barplot. Then, we capture the return values and use them as the y parameter in a subsequent call to the text() function, allowing us to place the text at whatever x position we want but overlaid in the middle of each horizontal bar. 
+
+```{r}
+# Create a table of Cylinders frequencies
+tbl <- table(Cars93$Cylinders)
+
+# Generate a horizontal barplot of these frequencies
+mids <- barplot(tbl, horiz = TRUE, 
+                col = "transparent",
+                names.arg = "")
+
+# Add names labels with text()
+text(20, mids, names(tbl))
+
+# Add count labels with text()
+text(35, mids, as.numeric(tbl))
+```
+
+To create stacked barplots all you need to do is feed it a table. 
+
+The `symbols` function can be used to show the relationship between 3 or more variables which are usually quite difficult to achieve. The points' shapes and colors vary depending on the variable we are looking at.
+
+```{r}
+symbols(UScereal$sugars, UScereal$calories, 
+        squares = UScereal$shelf,
+        inches = 0.1, 
+        bg = rainbow(3)[UScereal$shelf])
+title("Cereal calories vs. sugars, coded by shelf")
+```
+
+Still another option is the bubble plot where each data point is represented by a circle whose radius depends on the third variable specified by the value of this argument.
+
+```{r}
+symbols(Cars93$Horsepower, Cars93$MPG.city,
+        circles = sqrt(Cars93$Price),
+        inches = 0.1)
+```
+
+The `tableplot` function constructs a set of side-by-side horizontal barplots, one for each variable. This function works best when viewing up to about 10 variables at a time, for datasets with arbitrarily many records.
+
+```{r}
+# Load the insuranceData package
+library(insuranceData)
+
+# Use the data() function to load the dataCar data frame
+data(dataCar)
+
+# Load the tabplot package
+suppressPackageStartupMessages(library(tabplot))
+
+# Generate the default tableplot() display
+tableplot(dataCar)
+```
+
+To create conditional plots that show the separate relationships between variables within different groups, the `lattice` package can be used.
+
+```{r}
+library(lattice)
+
+# Use xyplot() to construct the conditional scatterplot
+xyplot(calories ~ sugars | shelf, data = UScereal)
+```

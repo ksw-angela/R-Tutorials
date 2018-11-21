@@ -1,0 +1,224 @@
+---
+title: "Machine Learning Toolbox"
+author: "Angela Kang"
+date: "September 17, 2017"
+output: pdf_document
+---
+
+```{r echo = FALSE, warning = FALSE, message = FALSE}
+library(caret)
+library(ggplot2)
+library(mlbench)
+library(caTools)
+data(Sonar)
+
+filepath <- "C:/Users/angel/OneDrive/Projects/Wine Quality"
+red <- read.csv(paste(filepath, "winequality-red.csv", sep = "/"), header = TRUE, sep = ";")
+white <- read.csv(paste(filepath, "winequality-white.csv", sep = "/"), header = TRUE, sep = ";")
+
+# Merge two datasets into one with "color" identifying the color of wine
+library(dplyr)
+wine <- bind_rows(red, white, .id = "type") %>%
+  mutate(color = factor(ifelse(type == "1", "red", "white"))) %>%
+  select(-type)
+```
+
+# Introduction to Predictive Models
+
+The `caret` package automates supervised learning (a.k.a. predictive modeling) - machine learning with a target variable. There are two main types of predictive models, classification (predict a qualitative variable e.g. species) and regression (predict a quantitative variable e.g. value of a diamond). To evaluate model performance we have some objective measures, one of which is the root mean squared error (RMSE) - the average error of the model in the same unit of our target variable, which is the value that `lm` aims to minimize when fitting the model. Therefore, using the RMSE on the sample data that we used to fit the model is not an accurate measure for model performance. Having a low RMSE could just mean we have an overfitted model (you have no idea how well your model generalizes to new data). A better approach is to use the out-of-sample error. The primary goal of the `caret` package is to see whether models will perform well on new data - that is, we do not want overfitting.
+
+# Cross Validation
+
+One way to test our model on new data is to create a single training and test sample split. We save 80% of our data to fit our model, and then use the other 20% to see how well the model performs given "new" data. This method, however, is not robust against outliers, it could vastly affect our out-of-sample RMSE. A better approach is to use multiple testing samples and average our RMSE over all the samples. One popular method is called *cross validation*. It splits our data into 10 folds, then for every combination of 9:1 split we fit a model on the 90% training set, then get an estimate for the out-of-sample error on the 10% test set - giving us 10 out-of-sample error estimates. Having 10 estimates gives us a better picture of how conssitently our model performs with new data.
+
+`caret` makes the above process very easy to do. Suppose we wanted to fit a linear regression to model `price` using all other variables in the `diamonds` dataset, and furthermore perform cross validation. The `train` function is below. Notice that we specified the `method` parameter to be `"lm"` and method for validation to be `"cv"` with 10 folds. 
+
+```{r message = FALSE, warning = FALSE}
+train(price ~ ., data = diamonds,
+      method = "lm",
+      trControl = trainControl(
+        method = "cv",
+        number = 10,
+        verboseIter = TRUE
+      ))
+```
+
+Instead of performing one iteration of cross validation, we can repeat our entire cross validation procedure for even greater confidence in our estimates of the model's out-of-sample accuracy. 
+
+```{r message = FALSE, warning = FALSE}
+train(price ~ ., data = diamonds,
+      method = "lm",
+      trControl = trainControl(
+        method = "cv",
+        number = 10,
+        repeats = 5,
+        verboseIter = TRUE
+      ))
+```
+
+# Confusion Matrix
+
+A *confusion matrix* is a way to evaluate binary classification models by comparing the predictions of classes to the actual classes on our data. It is of the following form,
+
+\begin{tabular}{|c|c|c|c|}
+\hline
+& & Reference & \\
+\hline
+& & Yes & No \\
+\hline
+Prediction & Yes & True Positive & False Positive \\
+& No & False Negative & True Negative \\
+\hline
+\end{tabular}
+
+Suppose we are looking at the outputs of a logistic regression model. When applied to some data the model will return probabilities that the observation falls into a certain class. We give the vector of probabilities some threshold arbitrarily, say 50%, so if it is above that threshold then we can assign it to belonging to the class 1, and class 2 otherwise. From there we can create a confusion matrix using the `table` function in base `R`. An easier, and more informative method is to use the `confusionMatrix(predicted, actual)` function in `caret` which calculates some useful statistics such as the accuracy of our model, and the No Information Rate (the rate at which a dummy model which always guesses that the data belongs to class 1 performs). If your no information rate is greater than your accuracy your model is performing very poorly! The sensitivity is the test set's true positive rate, and the specificity is the test set's true negative rate.
+
+```{r warning = FALSE, warning = FALSE}
+set.seed(42)
+
+# shuffle rows
+rows <- sample(1:nrow(Sonar), nrow(Sonar), replace = FALSE)
+Sonar <- Sonar[rows,]
+
+# 60/40 split into training and testing datasets
+split <- floor(nrow(Sonar)*0.6)
+train <- Sonar[1:split,]
+test <- Sonar[(1+split):nrow(Sonar),]
+
+# fit a logistic regression and get the predicted values
+model <- glm(Class ~ ., data = train, family = "binomial")
+p <- predict(model, test, type = "response")
+
+# threshold of 50%
+probs <- ifelse(p > 0.5, "M", "R")
+confusionMatrix(probs, test$Class)
+```
+
+Note that choosing the threshold is an exercise of balancing the rates of false negatives with false positives. It depends on the problem at hand and the costs/benefits associated with each error. If, say, false positives would have a greater undesired effect than false negatives we could assign the threshold to be higher than 50%. Sometimes we might actually use the confusion matrix to determine a good threshold.
+
+# ROC Curve
+
+We can see that manually evaluating classification thresholds is laborious. An alternative is to use the *ROC curve* which computes the true/false positive rates at every possible threshold, and then visualizes the tradeoff between the two extremes (100% true positive rate vs 0% false positive rate). This can be plotted using the `colAUC` function in the `caTools` package (it can actually calculate the ROC curve for multiple predictors at once). 
+
+```{r warning = FALSE}
+colAUC(p, test$Class, plotROC = TRUE)
+```
+
+The x-axis is the false positive rate, the y-axis is the true positive rate, and each of the points represents a specific value of the threshold.
+
+Models with random predictions tend to create ROC curves that have a straight diagonal line going through the center, and models with perfect separation (100% true positive rate and 0% false positive rate) will create a box with a single point in the upper left corner. To determine the model's accuracy across all thresholds we can look at the area under the curve measure (AUC) which ranges from 0 to 1.
+
+# Random Forests
+
+*Random forests* are robust against overfitting and yield very accurate, non-linear models. However, unlike linear models they have *hyperparameters* which are parameters that cannot be directly estimated from the training data, they must be manually defined by the user. Quite often, the default parameters are fine, though there are cases where they may need to be fine tuned.
+
+Random forests start with simple decision trees, which are fast, but not accurate. Random forests improve the accuracy by fitting many trees, each to a bootstrap sample of our data - called *boostrap aggregation* or *bagging*. Random forests take bagging a step further by only considering a random subset of columns at each split
+
+```{r message = FALSE, warning = FALSE}
+set.seed(42)
+
+model <- train(Class ~ ., data = Sonar, method = "ranger")
+plot(model)
+```
+
+It looks like smaller values of predictors deals greater accuracy.
+
+The most important of hyperparameters is `mtry` which is the number of randomly selected variables used at each split. Lower values will tend to be more random. `caret` automates the hyperparameter selection. As seen below, 
+
+```{r message = FALSE, warning = FALSE}
+# Fit random forest: model
+model <- train(
+  Class ~.,
+  tuneLength = 3,
+  data = Sonar, method = "ranger",
+  trControl = trainControl(method = "cv", number = 5, verboseIter = TRUE)
+)
+
+# Print model to console
+model
+
+# Plot model
+plot(model)
+```
+
+It seems choosing less variables (`mtry = 2`) yields best results.
+
+Instead of looking through all possible tuning parameters, we can instead explore a few specified ones using a tuning grid and feed it to our `train` function.
+
+```{r}
+myGrid <- data.frame(mtry = c(2,3,4,5,10,20), splitrule = rep("extratrees", 6))
+
+set.seed(42)
+model <- train(Class ~ ., data = Sonar, method = "ranger", tuneGrid = myGrid,
+               trControl = trainControl(method = "cv", number = 5, verboseIter = TRUE))
+plot(model)
+```
+
+# glmnet Models
+
+`glmnet` is an extension of `glm` models with built-in variable selection. It helps linear models better handle collinearity as well as cases where sample sizes are small. There are two main forms of models considered,
+\begin{itemize}
+  \item Lasso regression - penalizes number of non-zero coefficients
+  \item Ridge regression - penalizes absolute magnitude of coefficients
+\end{itemize}
+and in general attempt to find a parsimonious (i.e. simple) model. These pair well with random forest models. `glmnet` takes a combination of lasso and ridge regression models depending on the `alpha` parameter which ranges from 0 to 1 corresponding to pure lasso to pure ridge respectively. `lambda` ranges from 0 to infinity and controls the size of the penalty. Low lambda models will return complicated models while high lambda models will return a model with potentially only the intercept. `glmnet` fits all values of lambda simultaneously for a single value of alpha.
+
+`glmnet` models are great as a baseline since they fit quickly, ignore noisy variables, and provide interpretable coefficients. It's the first model we should try on any new dataset.
+
+```{r message = FALSE, warning = FALSE}
+myGrid <- expand.grid(alpha = 0:1, lambda = seq(0.0001, 0.1, length = 20))
+myControl <- trainControl(
+  method = "cv", number = 10,
+  summaryFunction = twoClassSummary,
+  classProbs = TRUE, # IMPORTANT!
+  verboseIter = TRUE
+)
+set.seed(42)
+model <- train(Class ~., Sonar, method = "glmnet", tuneGrid = myGrid, trControl = myControl)
+plot(model)
+```
+
+# Dealing With Missing Values
+
+One common pitfall of these algorithms is that we must have a method to deal with missing values. One approach is to simply remove rows with missing values, but this is generally not a good idea since it can lead to biases in the data as well as overconfident models. A better strategy is to replace missing values with the median if the observations are missing at random (MAR). We can do this easily by passing `preprocess = "medianImpute"` into our `train` function.
+
+While median imputation is fast, it can produce incorrect results if data is not missing at random (NMAR) especially for linear models. Non-linear models, such as random forests, tend to be more robust against NMAR cases. An alternative strategy is to use the k-nearest neighbors (KNN) imputation method, which imputes based on "similar" non-missing rows. We can do this by passing `preprocess = "knnImpute"` into our `train` function.
+
+# Preprocessing Argumnets
+
+Note that the `preprocess` argument can take multiple values at once, such as `preprocess = c("medianImpute", "center", "scale")`. A cheat sheet for preprocessing is below,
+\begin{itemize}
+  \item Start with median imputation, or KNN if you suspect your data is not MAR
+  \item For linear models
+  \begin{itemize}
+    \item Always center and scale
+    \item Try PCA and spatial sign
+  \end{itemize}
+  \item Tree-based models don't need much preprocessing, you can usually get away with just median imputation
+\end{itemize}
+
+# Handling Low Variance Predictors
+
+It is often the case that we will have variables in our dataset that don't contain much information, i.e. they will be constant (no variance), or of low variance. It can be especially dangerous if we have constant variables and we try to scale by dividing by it's variance which is 0. It's usually a good idea to remove extremely low variance variables from models. We can do this by adding the argument `"zv"` to remove constant columns, or `"nzv"` to remove nearly constant columns to our preprocessing argument. To identify near zero variance predictors we can use the function `nearZeroVar`. It takes in data x, then looks at the ratio of the most common value to the second most common value, `freqCut`, and the percentage of distinct values out of the number of total samples, `uniqueCut`. By default, caret uses `freqCut = 19` and `uniqueCut = 10`, which is fairly conservative. I like to be a little more aggressive and use `freqCut = 2` and `uniqueCut = 20` when calling `nearZeroVar`.
+
+# Principal Components Analysis
+
+It combines your low-variance and correlated variables into a single set of high-variance, perpendicular predictors - which is useful because they are perfectly uncorrelated, i.e. PCA prevents collinearity. Instead of throwing out all low-variance predictors, we can just throw out the zero-variance predictors from the modelling dataset and then also pass it through PCA.
+
+# Comparing Models
+When faced with multiple models to make sure we are doing a fair comparisons we must create a reusable trainControl object. An example is found below,
+
+```{r eval = FALSE}
+myFolds <- createFolds(y, k = 5)
+myControl <- trainControl(
+  summaryFunction = twoClassSummary,
+  classProbs = TRUE,
+  verboseIter = TRUE,
+  savePredictions = TRUE,
+  index = myFolds
+)
+```
+
+After fitting a glmnet model, the next one we can try is the random forest model. While these are slower and less interpretable than the glmnet model, if our interest lies solely on predictability they are often more accurate, and easier to tune since they require less parameters, and require little preprocessing - no need to center and scale and handles NMAR case relatively well even with median imputation. They also capture threshold effects and variable interactions by default. 
+
+After we have two or models we can compare them by selecting models with highest average AUC and also the lowest standard deviation in AUC. The `resamples` function allows us to make these comparisons automatically. To plot the differences we can use `bwplot(models, metric = "ROC")`.

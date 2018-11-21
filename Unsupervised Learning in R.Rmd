@@ -1,0 +1,179 @@
+---
+title: "Unsupervised Learning in R"
+author: "Angela Kang"
+date: "September 18, 2017"
+output: pdf_document
+---
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+filepath <- "C:/Users/angel/OneDrive/Projects/Pokemon"
+
+pokemon <- read.table(paste(filepath,"pokedex.txt",sep="/"), sep="\t", check.names = FALSE)
+pokemon <- pokemon[pokemon$`Special Evolution` == 0,]
+pokemon <- pokemon[,4:9]
+```
+
+There are three main types of machine learning,
+
+\begin{enumerate}
+  \item Unsupervised learning: finding structure in unlabeled data i.e. without a target variable
+  \item Supervised learning: making predictions on labeled data e.g. regression or classification
+  \item Reinforcement learning: computer learns by operating in a real or synthetic environment
+\end{enumerate}
+
+Within unsupervised learning there are two main goals,
+
+\begin{itemize}
+  \item To find homogeneous subgroups within a larger group - clustering
+  \item To find patterns in the features of the data - dimensionality reduction
+\end{itemize}
+
+Clustering has many applications such as segmenting customers, or finding groups of movies. Dimensionality reduction allows us to visualize high dimensional data while maintaining much of the data variability. It can also be used as a pre-processing step before supervised learning.
+
+Unsupervised learning has no single goal of analysis, and requires more creativity. 
+
+# K-Means Clustering
+Starts with a pre-defined number of clusters and assigns observations to clusters. Running kmeans is simple, we just invoke `kmeans(x, centers, nstart)` which runs the kmeans with specified number of centers `nstart` number of times. k-means has some stochastic element, meaning that a single run of the algorithm may not provide an accurate picture of the results, so we run it repeatedly and select the best outcome. The function `kmeans()$cluster` returns a vector containing the label for the cluster the function thinks the observations belong to.
+
+The algorithm is as follows,
+
+\begin{itemize}
+  \item Randomly assign each observation to an initial cluster
+  \item Calculate the center for each cluster by taking the average position of every point in the cluster
+  \item Observations are reassigned to the center they are closest to
+  \item Repeat the above until no observations change assignments
+\end{itemize}
+
+There are other stopping criteria that can be used such as limiting the number of iterations performed or stopping the algorithm if the cluster center moves within some threshold distance. Note that the best outcome from the kmeans function is determined by the model with the minimum total within cluster sum of squares.
+
+To determine the number of clusters we can try kmeans for a vector of centers values (e.g. 1 to 5) and then plot the total within cluster sum of squares and choose the one with the elbow value as our parameter value. Remember to set the seed for reproducible results. We look at the pokemon dataset on 6 dimensions for 802 pokemon.
+
+```{r}
+# Initialize total within sum of squares error: wss
+wss <- 0
+
+# Look over 1 to 15 possible clusters
+for (i in 1:15) {
+  # Fit the model: km.out
+  km.out <- kmeans(pokemon, centers = i, nstart = 20, iter.max = 50)
+  # Save the within cluster sum of squares
+  wss[i] <- km.out$tot.withinss
+}
+
+# Produce a scree plot
+plot(1:15, wss, type = "b", 
+     xlab = "Number of Clusters", 
+     ylab = "Within groups sum of squares")
+
+# Select number of clusters
+k <- 4
+
+# Build model with k clusters: km.out
+km.out <- kmeans(pokemon, centers = k, nstart = 20, iter.max = 50)
+
+# Plot of Defense vs. Speed by cluster membership
+plot(pokemon[, c("Defense", "Speed")],
+     col = km.out$cluster,
+     main = paste("k-means clustering of Pokemon with", k, "clusters"),
+     xlab = "Defense", ylab = "Speed")
+```
+
+# Hierarchical Clustering
+
+Used when the number of clusters is not known ahead of time as opposed to k-means which requires the number of centers ahead of time. There are two kinds, bottom-up and top-down. This document focusses on bottom-up. The algoirthm is as follows,
+
+\begin{itemize}
+  \item Each observation is initially set as its own cluster
+  \item Joins the closest two clusters into a single cluster
+  \item Repeats the above until there is only a single cluster
+\end{itemize}
+
+Hierarchical clustering can be performed using the `hclust` function which only requires a vector of distances between points. To use the Euclidean distance, only `dist(x)` is required. 
+
+There are four methods to determine which clusters get linked together,
+
+\begin{enumerate}
+  \item Complete: default for hclust, pairwise similarity between all observations in cluster 1 and 2, and uses largest of similarities
+  \item Single: same as above but uses smalest of similarities
+  \item Average: same as above but uses average of similarities
+  \item Centroid: finds centroid of cluster 1 and centroid of cluster 2 and uses similarity between two centroids
+\end{enumerate}
+
+As a rule of thumb, complete and average tend to produce the most balanced trees and are most commonly used. Single tends to produce unbalanced trees. Centroid can create inversions in clusters which is undesirable behavior and thus is used rarely. Balanced trees are essential if you want an even number of observations assigned to each cluster. On the other hand, if you want to detect outliers, unbalanced tree is more desirable since pruning an unbalanced tree can result in most observations assigned to one cluster and only a few observations assigned to other clusters.
+
+Make sure to scale data if the features have different standard deviations. This is done simply by using the `scale` function and passing the data.
+
+```{r}
+set.seed(42)
+pokemon.scaled <- scale(pokemon)
+
+# Create hierarchical clustering model
+hclust.pokemon <- hclust(dist(pokemon.scaled), method = "complete")
+
+# Create k-means model
+km.pokemon <- kmeans(pokemon.scaled, centers = 3, nstart = 20)
+
+# Apply cutree() to hclust.pokemon: cut.pokemon
+cut.pokemon <- cutree(hclust.pokemon, k = 3)
+
+# Compare methods
+table(km.pokemon$cluster, cut.pokemon)
+```
+
+From the above table it looks like the hierarchical model assigns most of the observation to cluster 1, while k-means distributes the observations more evenly. 
+
+To visualize our results we can look at a dendogram via `plot` function which shows how points are clustered and with heights representing the distance between the clusters. We limit the number of clusters based on some height. This can be done using the `cutree(hclust, h)` to cut by height, or `cutree(hclust, k)` to cut by number of clusters. 
+
+```{r}
+plot(hclust.pokemon)
+```
+
+# PCA
+
+PCA has three goals,
+
+\begin{enumerate}
+  \item Find linear combination of variables to create principal components
+  \item Mantain most variance in data in those principal components
+  \item Principal components are uncorrelated i.e. orthogonal to each other
+\end{enumerate}
+
+Essentially for two dimensional data it will find the regression line that maximizes the variation of the projection of points onto that line. Creating a PCA model in R uses the `prcomp(x, scale, center)` function. The `scale` and `center` arguments can be specified to true or false. The below looks at the pokemon dataset.
+
+```{r}
+pr.out <- prcomp(pokemon[,c(1,2,3,6)], scale = TRUE)
+summary(pr.out)
+```
+
+We can see the standard deviation of each principal component, the proportion of variance captured by each principal component, and lastly the cumulative variance captured by all the principal components. We can see that a minimum of 3 principal components are required to describe at least 75% of the variance. 
+
+# Visualizing and Interpreting PCA Results
+
+The first visualization considered is the biplot which plots all of the original observations plotted in the first two principal components. It also plots the other principal components as vectors in relation to the first two principal components. The biplot for the iris dataset is shown below.
+
+```{r}
+pr.iris <- prcomp(x = iris[-5], scale = FALSE, center = TRUE)
+biplot(pr.iris)
+```
+
+Notice that the direction of petal length and petal width are the same indicating that they are correlated in the original data.
+
+The second type is the scree plot which either shows the proportion of variance explained by each principal component, or the cumulative percentage of variance explained as the number of principal components increase. 
+
+```{r}
+pr.var <- pr.iris$sdev^2
+pve <- pr.var / sum(pr.var)
+plot(pve, xlab = "Principal Component",
+     ylab = "Proportion of Variance Explained",
+     ylim = c(0,1), type = "b")
+```
+
+# Practical Issues with PCA
+
+There are a few items that one must consider when using PCA,
+
+\begin{itemize}
+  \item Scaling the data - without scaling you are comparing different measures and gives false estimates of what variances are highest
+  \item Missing values - can drop missing values, or impute/estimate missing values
+  \item Dealing with categorical features - you can simply not include them, or encode them as numbers
+\end{itemize}

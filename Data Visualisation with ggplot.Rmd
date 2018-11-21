@@ -1,0 +1,171 @@
+---
+title: "Data Visualisation with ggplot2 - 1"
+author: "Angela Kang"
+date: "August 30, 2017"
+output: pdf_document
+---
+
+# CHAPTER 1
+The default for `ggplot` function is the it assumes the data is continuous. To plot the variable as categorical, we must explicity tell it to do so. With the first plot, the reader is under the impression that a cylinder value of 5 and 7 are possible when it's not.
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+library(ggplot2)
+library(MASS)
+library(dplyr)
+
+# Treating cyl as continuous variable
+ggplot(mtcars, aes(x = cyl, y = mpg)) +
+  geom_point()
+
+# Treating cyl as categorical variable
+ggplot(mtcars, aes(x = factor(cyl), y = mpg)) +
+  geom_point()
+```
+
+There are seven layers to the grammar of graphics and these are implemented in `ggplot2`,
+\begin{enumerate}
+  \item Data - what we're trying to plot
+  \item Aesthetics - which scales we should map our data onto
+  \item Geometries - how the plot will look
+  \item Facets - dictates how to split up our plot
+  \item Statistics - alows us to add some parameters e.g. a linear model
+  \item Coordinates - dimensions of the plot
+  \item Theme - controls all non-data ink on our plot
+\end{enumerate}
+
+Below is the code and plot that adds each layer in succession using the `ggplot2` library. We will look at the classic iris dataset. We need at least the first three layers to create a scatterplot. The data is the sepal length and sepal width of each flower, the aesthetics are mapping of sepal length to the x-axis and the sepal width to the y-axis, and the geometries is that we are plotting via a scatterplot.
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+baseplot <- ggplot(iris, aes(x = Sepal.Length, y = Sepal.Width)) + geom_jitter(alpha = 0.6)
+baseplot
+```
+
+We incorporate the facets layer by creating a plot for each species.
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+layer4 <- baseplot + facet_grid(. ~ Species)
+layer4
+```
+
+We incorporate the statistics layer by adding a linear model for each plot.
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+layer5 <- layer4 + stat_smooth(method = "lm", se = F, col = "red")
+layer5
+```
+
+We clean up the labels
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+levels(iris$Species) <- c("Setosa", "Versicolor", "virginica")
+layer6 <- layer5 + 
+  scale_y_continuous("Sepal Width (cm)",
+                     limits = c(2,5),
+                     expand = c(0,0)) +
+  scale_x_continuous("Sepal Length (cm)",
+                     limits = c(4,8),
+                     expand = c(0,0)) +
+  coord_equal()
+```
+
+The function geom_smooth provides a smoothed line. If we would not like the error shading we can add `se = FALSE`.
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+# 1 - The dia_plot object has been created for you
+dia_plot <- ggplot(diamonds, aes(x = carat, y = price))
+
+# 2 - Expand dia_plot by adding geom_point() with alpha set to 0.2
+dia_plot <- dia_plot + geom_point(alpha = 0.2)
+
+# 3 - Plot dia_plot with additional geom_smooth() with se set to FALSE
+dia_plot + geom_smooth(se = FALSE)
+
+# 4 - Copy the command from above and add aes() with the correct mapping to geom_smooth()
+dia_plot + geom_smooth(aes(col = clarity), se = FALSE)
+```
+
+An advantage that `ggplot` offers over base `R` graphics is that `ggplot` creates objects so it's not a static image, the plotting space is automatically adjusted.
+
+Typical aesthetics that we're able to manipulate are as follows,
+\begin{itemize}
+  \item \verb`x` x-axis position
+  \item \verb`y` y-axis position
+  \item \verb`colour` colour of dots, outlines of other shapes
+  \item \verb`fill` fill colour
+  \item \verb`size` diameter of points, thickness of lines
+  \item \verb`alpha` transparency
+  \item \verb`linetype` line dash pattern
+  \item \verb`labels` text on a plot or axes
+  \item \verb`shape` shape
+\end{itemize}
+
+The `shape` argument is equivalent to the `pch` argument in base `R` and thus share the same codes. Some popular options for the `shape` are as follows,
+\begin{itemize}
+  \item \verb`shape = 1` hollow 
+  \item \verb`shape = 16` solid, no outline
+  \item \verb`shape = 19` solid with an outline the same colour as the inside (default)
+  \item \verb`shape = 21` allows you to use both `fill` for the inside and `col` for the outline (good for when you want to map two aesthetics to a dot)
+\end{itemize}
+
+# geom_bar
+There are three main options for `position` depending on what type of barplot you would like,
+\begin{itemize}
+  \item \verb`position = "stack"` creates a stacked bar plot
+  \item \verb`position = "full"` creates a proportion bar plot - to create a proportion plot we can use \verb`geom_area` function instead
+  \item \verb`position = "dodge"` creates a side by side bar plot
+\end{itemize}
+
+# scale_
+There are a few `scale` functions that can be used to clean up the axes, 
+\begin{itemize}
+  \item \verb`scale_x_discrete` sets the x-axis label
+  \item \verb`scale_y_discrete` sets the y-axis label
+  \item \verb`scale_fill_manual` fixes the legend, where \verb`values` define the colour, and \verb`labels` define the names of the categories
+\end{itemize}
+
+If you want to plot univariate data with no fake y-axis, base `R` provides a function called `stripchart`. We can also do this with `ggplot`, though it's a bit more cumbersome. 
+
+# Geometries
+Each geom has specific aesthetic mappings. For example, `geom_point` requires x, y, and we also have some optional mappings such as alpha, colour, fill, shape, and size. The key feature to `ggplot` is the ability to add layers. If we wanted to look at the width and length of the iris' by species, as well as their averages, we could simply add another `geom_point` call.
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+iris.summary <- aggregate(iris[1:4], list(iris$Species), mean)
+names(iris.summary)[1] <- "Species"
+iris.summary
+
+# the first geom_point inherits data and aes from ggplot
+# the second takes different data but inherits aes from ggplot
+ggplot(iris, aes(x = Sepal.Length, y = Sepal.Width, col = Species)) +
+  geom_point() + 
+  geom_point(data = iris.summary, shape = 15, size = 5)
+```
+
+**Scatterplots**
+Note that `geom_point(postion = "jitter")` is equivalent to `geom_jitter()`. We can alter the amount that we are adding randomness by using `width`. A benefit to this is that we can assign this object to a variable and then refer to this for other graphs so they are jittered by the same amount.
+
+**Barplots**
+To create a histogram we can use the `geom_histogram` function which only requires the aesthetic mapping for x. We can alter the width of the binds using the argument `binwidth`. 
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+ggplot(iris, aes(x = Sepal.Width)) +
+  geom_histogram()
+
+ggplot(iris, aes(x = Sepal.Width)) +
+  geom_histogram(binwidth = 0.1)
+```
+
+Similar to the jitter ability, we can alter the amount that bar graphs overlap with the `position_dodge(width = )` statement. We can have `ggplot` automatically come up with a colour palette using the function `scale_fill_brewer` which automatically creates a gradient with 9 different colours. If 9 is not enough we can manually set one ourselves using `colorRampPalette`. The input is a character vector of 2 or more colour values, e.g. "#FFFFFF" (white) and "#0000FF" (pure blue). The output is itself a function! So when you assign it to an object, that object should be used as a function.
+
+# qplot
+So far we've been using ggplot then the geom functions to create graphs. `qplot` is a function that allows us to create plots quicker by choosing geoms automatically while still implementing the language of graphics.
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+qplot(Sepal.Length, Sepal.Width, data = iris, col = Species, 
+      position = "jitter", alpha = I(0.5))
+```
+Note the use of `I` above which inhibits `ggplot` from mapping it as another variable for the aesthetic.
+
+Note that a dot plot is when we have categorical x and continuous y variables. `ggplot` offers a geom to create dot plots called `geom_dotplot`
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+ggplot(mtcars, aes(cyl, wt, fill = am)) +
+  geom_dotplot(binaxis = "y", stackdir = "center")
+```

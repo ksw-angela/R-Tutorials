@@ -1,0 +1,372 @@
+---
+title: "Building Web Applications in R With Shiny"
+author: "Angela Kang"
+date: "April 26, 2018"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Introduction and Shiny Basics
+```{r echo = FALSE, warning = FALSE, message = FALSE}
+library(shiny)
+library(dplyr)
+library(DT)
+```
+
+Below is the anatomy of a Shiny app.
+```{r eval = FALSE}
+# User interface: controls layout and appearance of app including the inputs and outputs of the app
+ui <- fluidPage() 
+# Server function: contains instructions needed to build app including instructions on how to do calculations needed for the output
+server <- function(input, output){} 
+# creates the Shiny app object
+shinyApp(ui = ui, server = server) 
+```
+
+The following tutorial will build a simple movie browser app using data from IMDB and Rotten Tomatoes on random sample of 651 movies released in US between 1970 and 2014.
+
+## User Interface
+The `fluidPage` function creates a fluid page layout consisting of rows and columns for the input and outputs and scale for relative widths. The default appearance for an app consists of a narrow sidebar panel on the left, with a wider main panel on the right. This default appearance is defined using `sidebarLayout` function. The `sidebarPanel` function then contains information on how to set up the sidebar panel, and the `mainPanel` function contains information on how to set up the main panel. Within the `sidebarPanel` function, we can define `selectInput` functions, which containts information on what the inputs will consist of. Below is an example of a `selectInput` function.
+
+```{r eval = FALSE}
+selectInput(inputID = "y", # input value that the app will internally use to access value selected by the user
+            label = "Y-axis:", # display label that user sees
+            choices = c("imdb_rating", "imdb_num_votes",
+                        "critics_score", "audience_score", "runtime"), # list of choices user will choose from
+            selected = "audience_score") # default selection from choices list
+```
+
+To make the choices more human readable, a simple edit to the above code can be made.
+
+```{r eval = FALSE}
+selectInput(inputID = "y",
+            label = "Y-axis:",
+            choices = c("IMDB rating" = "imdb_rating", 
+                        "IMDB number of votes" = "imdb_num_votes", 
+                        "Critics score" = "critics_score", 
+                        "Audience score" = "audience_score", 
+                        "Runtime" = "runtime"),
+            selected = "audience_score")
+```
+
+## Server Function
+The following is the anatomy of a server function. This particular example creates a scatterplot.
+
+```{r eval = FALSE}
+server <- function(input, output){
+  # Create the scatterplot object the plotOutput function is expecting
+  output$scatterplot <- renderPlot({
+    ggplot(data = movies, aes_string(x = input$x, y = input$y)) + geom_point()
+  })
+}
+```
+
+Note that the variables `x` and `y` are mapped back to the inputs defined in the `selectInput` function in the previous section.
+
+The `server` function can take in as many as three arguments:
+\begin{enumerate}
+  \item Input
+  \item Output: given the inputs, it specifies how the outputs should be laid out in the UI
+  \item Session: environment
+\end{enumerate}
+
+There are three rules of building server functions:
+\begin{enumerate}
+  \item Save objects to display to output\$xx
+  \item Build objects to display with the render function that corresponds to appropriate output function
+  \item Use input values with input\$xx
+\end{enumerate}
+
+### Reactivity
+
+While it's easy to build interactive applications with Shiny, to get the most out of it we will need to understand the reactive programming scheme used by Shiny. Shiny automatically updates outputs (e.g. plots), when inputs that go into them change. 
+
+# Inputs, Outputs, and Rendering Functions
+
+## Reactive Flow, Simplified
+The user selects an input, this input goes through some expression in the server, and an output is rendered. Each time the user changes their input selection the expression that changes the output will automatically re-execute and the relevant output will be re-rendered based on the value of the new input.
+
+## UI Inputs
+There are many input options that can be found in the Shiny cheatsheet. As an example we will add a checkbox input to specify whether the data plotted should be shown in a data table. To do this the following additions to our code will be made:
+
+\begin{enumerate}
+  \item ui: Add an input widget that the user can interact with to check/uncheck the box.
+  \item ui: Add an output defining where the data table should appear
+  \item server: Add a reactive expression that creates the data table if the checkbox is checked.
+\end{enumerate}
+
+```{r eval = FALSE}
+# Step 1
+checkboxInput(inputId = "show_data",
+              label = "Show data table",
+              value = TRUE)
+
+# Step 2
+mainPanel(
+  plotOutput(outputId = "scatterplot"),
+          DT::dataTableOutput(outputId = "moviestable")
+  )
+
+# Step 3
+output$moviestable <- DT::renderDataTable({
+  if(input$show_data){
+    DT::datatable(data = movies %>% select(1:7),
+                  options = list(pageLength = 10),
+                  rownames = FALSE)
+  }
+})
+```
+
+`req` function ensures that values are available (a.k.a. truthy) before proceeding with a calculation or action. If any value is not "truthy", the operation is stopped by raising a "silent" exception (not logged by Shiny, nor displayed in the Shiny app's UI). This function would be placed in the output part of the shiny code. The below code does not have a `req` function, and thus will raise an error if an input is not provided in the app.
+
+```{r eval = FALSE}
+load(url("http://s3.amazonaws.com/assets.datacamp.com/production/course_4850/datasets/movies.Rdata"))
+n_total <- nrow(movies)
+
+# Define UI for application that plots features of movies
+ui <- fluidPage(
+  
+  # Sidebar layout with a input and output definitions
+  sidebarLayout(
+    
+    # Inputs
+    sidebarPanel(
+      
+      # Text instructions
+      HTML(paste("Enter a value between 1 and", n_total)),
+      
+      # Numeric input for sample size
+      numericInput(inputId = "n",
+                   label = "Sample size:",
+                   value = 30,
+                   min = 1, max = n_total,
+                   step = 1)
+      
+    ),
+    
+    # Output: Show data table
+    mainPanel(
+      DT::dataTableOutput(outputId = "moviestable")
+    )
+  )
+)
+
+# Define server function required to create the scatterplot
+server <- function(input, output) {
+  
+  # Create data table
+  output$moviestable <- DT::renderDataTable({
+    movies_sample <- movies %>%
+      sample_n(input$n) %>%
+      select(title:studio)
+    DT::datatable(data = movies_sample, 
+                  options = list(pageLength = 10), 
+                  rownames = FALSE)
+  })
+  
+}
+
+# Create a Shiny app object
+shinyApp(ui = ui, server = server)
+```
+
+To stop this error, a simple `req` statement is added.
+
+```{r eval = FALSE}
+# Define server function required to create the scatterplot
+server <- function(input, output) {
+  
+  # Create data table
+  output$moviestable <- DT::renderDataTable({
+    req(input$n)
+    movies_sample <- movies %>%
+      sample_n(input$n) %>%
+      select(title:studio)
+    DT::datatable(data = movies_sample, 
+                  options = list(pageLength = 10), 
+                  rownames = FALSE)
+  })
+  
+}
+```
+
+If you have many items to choose from, a better way to select for items would be to type for them rather than scrolling through a list. This can be done with the `selectize` and `multiple` option in `selectInput` widget.
+
+To define a date range input we can use the `dateRangeInput` widget. 
+
+The `plotOutput` function also allows for brushing, which is when the user can draw a rectangle in the plotting area and drag it around. This is easily done by adding a second argument to the function like below.
+
+```{r eval = FALSE}
+plotOutput(outputId = "scatterplot", brush = "plot_brush")
+```
+
+Brushing will send information about the brushed area to the server. The value will then be accessible via `input$plot_brush`. The reactive expression that makes use of the brushing is:
+
+```{r eval = FALSE}
+output$moviestable <- DT::renderDataTable({
+  brushedPoints(movies, input$plot_brush) %>%
+    select(title, audience_score, critics_score)
+})
+```
+
+This will return rows from a data frame which are under a brush used with `plotOutput`. Users can also interact with plots by hovering over them. This is done using the `hover` argument in `plotOutput`. 
+
+It's possible to specify the file type and variables included in the file you will download. For downloading from the Shiny app, we use the `downloadHandler` function in the server, and `downloadButton` or `downloadLink` function in the UI. 
+
+# Reactive Programming
+
+There are three kinds of objects in reactive programming:
+
+\begin{enumerate}
+  \item Reactive sources: typically a user input that comes through a browser interface
+  \item Reactive conductor: component between a source and endpoint
+  \item Reactive endpoint: something that appears in the user's browser window, such as a plot or table of values
+\end{enumerate}
+
+Note that one reactive source can be connected to multiple endpoints, and vice versa. A conductor can both be a dependent (child) and have dependents (parent). Sources can only have dependents (they are the parents), and endpoints can only be dependents (they are the children). 
+
+## Why Use Reactives?
+
+Reactive conductors help you avoid copy-and-paste code and help decompose large and complex calculations into smaller pieces. While functions and reactives in `R` help accomplish similar goals of not repeating yourself, they are different in implementation. Each time you call a function, `R` will evaluate it. Whereas, reactive expressions are lazy and only get executed when their input changes. Even if you call a reactive expression multiple times, it only re-executes when its input(s) change.
+
+Using many reactive expressions in your app can create a complicated dependency structure in your app. The *reactlog* is a graphical representation of this dependency structure, and it also gives you very detailed information about what's happening under the hood as Shiny evaluates your application.
+
+To view:
+
+\begin{itemize}
+  \item In a fresh R session, run options(shiny.reactlog = TRUE)
+  \item Launch your app as you normally would
+  \item In the app, press Ctrl and F3
+\end{itemize}
+
+## Reactives and Observers
+
+An implementation of a reactive source is a `reactiveValues()`. An example of this is a user input, it looks like a list and contains many individual reactive values that are set by input from the web browser. The implementation of reactive conductors is a reactive expression (`reactive()`). Reactive expressions can access reactive values or other reactive expressions and return a value. They're useful for catching the results of any procedure that happens in response to user input. The implementation for a reactive endpoint are observers (`observe()`). An `output$*` object is an observer. A render function returns a reactive expression and when you assign it to an `output$*` value, Shiny automatically creates an observer that uses the reactive expression. Observers can access reactive sources and reactive expressions, but they don't return a value. Instead, they are used for their side effects, which typically involves sending data to the web browser.
+
+### Reactives vs. Observers
+\begin{itemize}
+  \item Similarities: both store expression that can be executed
+  \item Differences:
+  \begin{itemize}
+    \item Reactive expressions return values, but observers don't
+    \item Observers (and endpoints in general) eagerly respond to changes in their dependencies, but reactive expressions (and conductors in general) don't
+    \item Reactive expressions must not have side effects, while observers are only useful for their side effects
+  \end{itemize}
+  \item `reactive()` is for calculating values, without side effects
+  \item `observer()` is for performing actions, with side effects
+  \item Do not use a `observe()` when calculating a value, and especially don't use `reactive()` for performing actions with side effects 
+\end{itemize}
+
+The following table summarizes the purpose of reactive and observer functions,
+
+\begin{tabular}{c|c|c}
+& reactive() & observer() \\
+\hline
+Purpose & Calculations & Actions \\
+Side effects & Forbidden & Allowed 
+\end{tabular}
+
+## Stop, Trigger, Delay
+
+Suppose your app has an input widget where users can enter text for the title of the plot. However, you only want the title to update if any of the other inputs that go into the plot change. You can achieve this by isolating the plot title such that when input `x` or `y` changes, the plot, along with the title, will update. But when only the title input changes, the plot will not update. The below code accomplishes this.
+
+```{r eval = FALSE}
+output$scatterplot <- renderPlot({
+  ggplot(data = movies_subset(), aes_string(x = input$x, y = input$y)) +
+    geom_point() +
+    labs_title(title = isolate({input$plot_title}))
+})
+```
+
+For triggering reactions, we use `observeEvent`. Sometimes we may want to explicitly define the action taken by the user before calculating an expression or taking an action. A reactive value or expression that is used to trigger other calculations in this way is called an event.
+
+```{r eval = FALSE}
+observeEvent(eventExpr, handlerExpr, _)
+```
+
+The `eventExpr` argument can be a simple reactive value like an input, a call to a reactive expression, or a complex expression wrapped in curly braces. The `handlerExpr` argument is the expression to call whenever the `eventExpr` is invalidated. 
+
+We can also delay reactions with `eventReactive` which takes similar arguments as `observeEvent`. The argument `ignoreNULL` in `eventReactive` helps define what the app should do when it's first launched and before the user has had a chance to interact with it. If it is set to `ignoreNULL = FALSE`, the app will initially perform the action or calculation and then the user can re-initiate it.
+
+`observeEvent` and `eventReactive` look and feel very similar with the same syntax and arguments, but they aren't the same at all.
+
+\begin{itemize}
+  \item observeEvent() is used to perform an action in response to an event
+  \item eventReactive() is used to create a calculated value that only updates in response to an event
+\end{itemize}
+
+There are also differences between the `observe` and `reactive` functions:
+
+\begin{itemize}
+  \item observe() and reactive() functions automatically trigger on whatever they can access
+  \item observeEvent() and eventReactive() functions need to be explicitly told what triggers them
+\end{itemize}
+
+`isolate()` is used to stop a reaction. `observeEvent()` is used to perform an action in response to an event. `eventReactive()` is used to create a calculated value that only updates in response to an event. 
+
+Reactives are equivalent to no argument functions. You can think of them as variables that can depend on user input and other reactives. Meaning they will only be evaluated if their inputs change - not each time they're called. Reactives are for reactive values and expressions, while observers are for their side effects. Make sure not to define a reactive inside a render function. 
+
+# Customizing Appearance
+
+## Interface Builder Functions
+
+Shiny comes with a list of functions saved under tags that allow us to access HTML tags and use them to add static (as opposed to reactive) content to our apps.  
+
+```{r}
+head(names(tags))
+```
+
+The tags object in Shiny is a list of 110 simple functions for constructing HTML documents. Each of the elements in the above list is a function that maps to an HTML tag. For example, the `b` tag is used to bold text. `R` translates the text string to HTML. 
+
+```{r}
+tags$b("This is my first app")
+```
+
+The most common tags are wrapped in their own functions, so we don't need to call `tag` separately.
+
+```{r}
+strong("This is my first app")
+```
+
+If you are comfortable with HTML, an alternative is to directly use HTML syntax and wrap your HTML code with the HTML function. 
+
+## Layout Panels
+
+A useful function for customizing the layout of your app is `fluidrow`. This function creates horizontal rows where objects can be placed. You can add as many rows as you want, but you want to be careful about expanding your app too much vertically as your users might not be willing to scroll down to interact with your app in full.
+
+The `column` function is also useful. It adds columns within a row of a user-defined width for each column. This function can be nested inside `fluidrow`. The width is relative and the total width of columns with any given row should add to 12. You can use columns to place output objects in specific places in your app.
+
+We can also use panels to group multiple elements into a single element that has its own properties. This functionality is especially important and useful for complex apps with a large number of inputs and outputs such that it might not be clear to the user where to get started. 
+
+The `wellPanel` function which can `fluidrow` can be nested inside, groups elements into a grey box with rounded corners. Shiny offers 12 different panel types. 
+
+The default width for `sidebarPanel` is 4 and for `mainPanel` it's 8. We can easily change this by adding the argument `width = `.
+
+The `titlePanel` is used to create a panel containing an application title. Often it makes sense to include this panel outside the `sidebarLayout`. To change the name of the application in our browser, we can define the argument `windowTitle = ` inside `titlePanel`.
+
+`conditionalPanel` creates a panel that is visible conditional upon the value of an input or output. 
+
+## Tabs and Tabsets
+
+If the amount of information you wish to communicate with your users does not fit well on a single page, or if there is detailed information like raw data, that you want to make available to your users but not necessarily feature prominently in your app, you can make use of tabs to distribute this information into stackable tab panels. Tabsets are created by calling the `tabsetPanel` function with a list of tabs created by `tabPanel`. Each tab panel has a unique title and a list of output elements which are rendered vertically within the tab. 
+
+```{r eval = FALSE}
+mainPanel(
+  tabsetPanel(type = "tabs",
+              tabPanel("Plot", plotOutput("plot")),
+              tabPanel("Summary", tableOutput("summary")),
+              tabPanel("Data", DT::dataTableOutput("data")),
+              tabPanel("Reference",
+                       tags$p("The data was obtained from",
+                              tags$a("IMDB", href = "http://www.imdb.com/"), "and",
+                              tags$a("Rotten Tomatoes", href = "https://www.rottentomatoes.com/"), "."),
+                       tags$p("The data represents", nrow(movies), "randomly sampled movies released between 1972 and 2014 in the United States")))
+)
+```
+
+Note that it is crucial to use a reactive statement to perform the computation, especially if our data sample is large and is computationally expensive to carry out. With the reactive statement we can perform the calculation once and then display the output in multiple tabs.
+
+Another option for laying out tabs is using the `navlistPanel` which lists the tabs vertically down the side, as opposed to horizontally across the screen.
+
+There are many other ways of customizing the look of your app, including using custom CSS. One quick and easy way of changing the look is using the prebuilt themes in the `shinythemes` package. Instead of going with a single theme, a useful tool for browsing themes is the `themeSelector()` widget. Note that if it's placed within a tab, it will only be visible within that tab. This widget should be used in development only. Once you decide on a theme, you should remove the widget and just define the theme you want using the shinytheme function. 

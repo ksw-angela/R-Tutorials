@@ -1,0 +1,364 @@
+---
+title: "Data Visualisation with ggplot - 3"
+author: "Angela Kang"
+date: "September 7, 2017"
+output: pdf_document
+---
+
+```{r echo = FALSE, warning = FALSE, message = FALSE}
+library(ggplot2)
+library(MASS)
+library(tidyr)
+library(dplyr)
+library(car)
+library(gganimate)
+```
+
+To transform the y scale we can add the function `scale_y_log10()` to our ggplot commands. For nice formatting of our transformation we wrap our function with `expression` e.g. `scale_y_log10(expression(log[10](Y)), limit = c(1,100))`.
+
+The `coord_equal` function with no arguments sets the aspect ratio as 1. 
+
+The following plots discussed are better suited to an academic audience - those who have solid statistical background. 
+
+# Box Plots
+Box plots summarize the data with 5 statistics, the min, 1st quartile, median, 3rd quartile, and the max. The distance between the 1st quartile and the 3rd quartile is called the interquartile range (IQR). Another feature that box plots point out are extreme values which are defined as values that fall outside the range of 1.5 times the IQR below Q1 or above Q3. Any extreme values are plotted as distinct dots and not part of the whiskers. The whiskers never extend beyond the fence (the values that fall in the extreme range).
+
+If you only have continuous variables, you can convert them into ordinal variables using any of the following functions:
+
+\begin{itemize}
+  \item \verb`cut_interval(x, n)` makes \verb`n` groups from vector \verb`x` with equal range.
+  \item \verb`cut_number(x, n)` makes \verb`n` groups from vector \verb`x` with (approximately) equal numbers of observations.
+  \item \verb`cut_width(x, width)` makes groups of width \verb`width` from vector \verb`x`.
+\end{itemize}
+
+Make sure to include this in your `geom_boxplot` as the grouping function. This is useful when you want to summarize a complex scatter plot into a series of box plots. 
+
+Because there are many different ways to calculate the interquartile range, the function `plot_quart` allows us to explore the differences. It takes an argument for the sample size and randomly generates it using rnorm and then plots 9 boxplot statistics using 9 different methods. 
+
+
+# Density Plots
+To plot our empirical density function we use the kernel density estimate (KDE) - a sum of 'bumps' placed at observations. The kernel function determines the shape of the bumps while the window width h, determines their width. This method of calculating the empirical density function depends on our width h. If our h is large then there is more overlap betwen the bumps and consequently a smoother overall empirical function. A smaller h results in a bumpier overall empirical function. Be wary of this when looking at these plots. Another thing to be wary is that the KDE extends beyond the limits of our data by half of the width. The good thing about `geom_density(trim = TRUE)` is that it automatically cuts off the plot at the min and max data points of our dataset to reduce the confusion about the range of our dataset. The downside is that the area under the density function no longer stays 1. Another argument that can be specified is what kernel function to use. 
+
+Sometimes it is useful to compare a histogram with a density plot. However, the histogram's y-scale must first be converted to frequency instead of absolute count. After doing so, you can add an empirical PDF using `geom_density` or a theoretical PDF using `stat_function`.
+
+# Multiple Groups / Variables
+Instead of jitter plots we can also plot the box plots when looking at continuous vs ordinal data. The problem with box plots is that they contain no information about the number of observations.This is seen below with the mammalian sleep dataset. We cannot tell that there are actually only 5 insectivores in the dataset.
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+ggplot(msleep, aes(x = vore, y = sleep_total)) + geom_jitter(position = position_jitter(0.2))
+ggplot(msleep, aes(x = vore, y = sleep_total)) + geom_boxplot()
+```
+
+We could potentially change the thickness of the boxes across ordinal variables to represent the number of observations.
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+ggplot(msleep, aes(x = vore, y = sleep_total)) + geom_boxplot(varwidth = TRUE)
+```
+
+To directly compare the distributions of ordinal data we can use overlapped density plots. But once again we lose information about the number of points in each group.
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+ggplot(msleep, aes(x = sleep_total, fill = vore)) + geom_density(col = NA, alpha = 0.35)
+```
+
+Still another option could be to facet our density plots. 
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+ggplot(msleep, aes(x = sleep_total)) + geom_density() + facet_grid(.~vore)
+```
+
+Furthermore we could also try the violin plot.
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+ggplot(msleep, aes(x = vore, y = sleep_total)) + geom_violin()
+```
+
+To highlight a bimodal distribution a 2D density plot can be used using `geom_density_2d`. A contour plot, or an aesthetic mapping of color to the proportion can be used. A useful package for multi-hue color palettes suitable for continuous variables is the `viridis` package. The advantage of these scales is that instead of providing an even color gradient for a continuous scale, they highlight the highest values by using an uneven color gradient on purpose. The high values are lighter colors (yellow versus blue), so they stand out more. Here it is in action against the old faithful eruption data.
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+library(viridis)
+
+# Add viridis color scale
+ggplot(faithful, aes(x = waiting, y = eruptions)) +
+  scale_y_continuous(limits = c(1, 5.5), expand = c(0,0)) +
+  scale_x_continuous(limits = c(40, 100), expand = c(0,0)) +
+  coord_fixed(60/4.5) +
+  stat_density_2d(geom = "tile", aes(fill = ..density..), h=c(5,.5), contour = FALSE) +
+  scale_fill_viridis()
+```
+
+# Graphics of Large Data
+
+We first define what large data is,
+\begin{itemize}
+  \item Many observations
+  \begin{itemize}
+    \item High-resolution time series
+    \item Large surveys
+    \item Website analytics
+  \end{itemize}
+  \item Many variables
+  \begin{itemize}
+    \item Multidimensional data
+  \end{itemize}
+  \item Combination
+\end{itemize}
+
+Suppose we were looking at the `diamonds` dataset provided in `ggplot2` package, which has more than 50000 observations. Suppose also that we wanted to look at the price vs carat of the diamonds. If we simply plot the values it's quite hard to decipher trends. We can fix this by using a different symbol, a different size, and a different alpha level as shown below.
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+base_plot <- ggplot(diamonds, aes(x = carat, y = price))
+base_plot + geom_point()
+base_plot + geom_point(shape = 1)
+base_plot + geom_point(shape = 1, alpha = 0.2)
+```
+
+We can also add on a two dimensional density plot with default arguments then mapped onto a continuous color scheme. Or by filling the entire area to show a shaded gradient.
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+base_plot + geom_point(shape = 1, alpha = 0.2) + stat_density2d(col = "blue")
+base_plot + geom_point(shape = 1, alpha = 0.2) + stat_density2d(aes(col = ..level..))
+base_plot + stat_density2d(geom = "tile", aes(fill = ..density..), contour = FALSE)
+```
+
+However since the data is so dense for the lower left hand corner this doesn't really give us much more information than simply plotting the points. An alternative is to simply bin the values and map to a continuous color gradient, which is basically a 2D version of a histogram. 
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+base_plot + geom_bin2d()
+```
+
+This means that we can also change the bin number to show a higher level of detail.
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+base_plot + geom_bin2d(bins = 100)
+```
+
+An extension is to use hex-binning which changes the shape of the bins from squares to hexagons. And just like the regular bins we can also change the bin number.
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+base_plot + geom_hex()
+base_plot + geom_hex(bins = 100)
+```
+
+For high dimensional data we can use a SPLOM as discussed in the previous section. Another popular plot is the parallel coordinate plot.
+
+# Ternary Plots
+Ternary plots, a.k.a. triangle plots are used to depict compositional trivariate data. That means we have a parts-of-a-whole problem where our 3 parameters add up to 100%. A typical example is soil composition - the sand, silt, and clay proportion. The data frame for the African Soil Profiles Database can be found in the `GSIF` package. We could compare the soil composition of different areas using a stacked bar plot, or we could use a ternary plot which is a scatterplot in a triangle chart where corners represent higher proportion of that variable. 
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+library(GSIF)
+data(afsp)
+africa <- afsp$horizons[,c("SNDPPT","SLTPPT","CLYPPT")]
+africa <- filter(africa, !is.na(SNDPPT) & !is.na(SLTPPT) & !is.na(CLYPPT))
+africa$ID <- row.names(africa)
+africa$Sand <- africa$SNDPPT / (africa$SNDPPT + africa$SLTPPT + africa$CLYPPT)
+africa$Silt <- africa$SLTPPT / (africa$SNDPPT + africa$SLTPPT + africa$CLYPPT)
+africa$Clay <- africa$CLYPPT / (africa$SNDPPT + africa$SLTPPT + africa$CLYPPT)
+africa <- africa[,c("ID","Sand","Silt","Clay")]
+africa_sample <- africa[sample(nrow(africa),50),]
+
+# to make the stacked bar plot we need to have tidy data with a single variable for the factor
+africa_sample_tidy <- gather(africa_sample, key, value, -ID)
+
+ggplot(africa_sample_tidy, aes(x = factor(ID), y = value, fill = key)) +
+  geom_col() +
+  coord_flip()
+```
+
+To create the ternary plot we need the `ggtern` package. 
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+library(ggtern)
+africa_sample <- africa[sample(nrow(africa), 10000),]
+ggtern(africa_sample, aes(x = Sand, y = Silt, z = Clay)) +
+  geom_point(shape = 16, alpha = 0.2)
+
+ggtern(africa_sample, aes(x = Sand, y = Silt, z = Clay)) +
+  geom_density_tern()
+
+ggtern(africa_sample, aes(x = Sand, y = Silt, z = Clay)) +
+  stat_density_tern(geom = "polygon", aes(fill = ..level.., alpha = ..level..)) +
+  guides(fill = FALSE)
+```
+
+# Network Plots
+
+Network plots can be used to visualise relationship data. Suppose we wanted to plot a network of romantic relationships in the TV show Mad Men found in the library `geomnet` as the dataframe `madmen`. Notice that it is a list of two data frames called edges and vertices. This is enough information to build the network. We can very clearly see that Don Draper is the womanizer of the show. 
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+library(geomnet)
+mmnet <- merge(madmen$edges, madmen$vertices,
+               by.x = "Name1", by.y = "label",
+               all = TRUE)
+ggplot(data = mmnet, aes(from_id = Name1, to_id = Name2)) +
+  geom_net(aes(col = Gender), size = 6, linewidth = 1, labelon = TRUE, fontsize = 3, labelcolour = "black")
+```
+
+The below removes theme elements for a cleaner network plot.
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+ggplot(data = mmnet, aes(from_id = Name1, to_id = Name2)) +
+  geom_net(aes(col = Gender),
+           size = 6,
+           linewidth = 1,
+           labelon = TRUE,
+           fontsize = 3,
+           labelcolour = "black",
+           directed = TRUE) +
+  scale_color_manual(values = c("#FF69B4", "#0099ff")) + 
+  xlim(c(-0.05, 1.05)) +
+  ggmap::theme_nothing(legend = TRUE) +
+  theme(legend.key = element_blank())
+```
+
+# Diagnostic Plots
+Base `R` gives four diagnostic plots for linear models.
+\begin{itemize}
+  \item Residuals vs fitted - want to visible trend
+  \item QQ Plot - want a straight line
+  \item Scale-Location - determines the presence of heteroskedasticity
+  \item Leverage - determines points of greatest influence to our model by determining the effect they have when they're added to the model
+\end{itemize}
+
+The `ggfortify` package is an all-purpose plot converter between base graphics and `ggplot2` grid graphics. We will be focussing on the `trees` dataset.
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+  # Create linear model: res
+res <- lm(Volume ~ Girth, data = trees)
+
+# Plot res
+plot(res)
+
+# Import ggfortify and use autoplot()
+library(ggfortify)
+autoplot(res, ncol = 2)
+```
+
+Time series objects (class mts or ts) also have their own methods for plot(). `ggfortify` can also take advantage of this functionality using the function `autoplot`. 
+
+To determine the distance between European cities either a heat map or the autoplot of multidimensional scaling can be used.
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+autoplot(eurodist) + 
+  coord_fixed()
+
+# Autoplot of MDS
+autoplot(cmdscale(eurodist, eig = TRUE), 
+         label = TRUE, 
+         label.size = 3, 
+         size = 0)
+```
+
+We can also employ clustering methods. The below charts look at the iris dataset.
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+# Perform clustering
+iris_k <- kmeans(iris[-5], 3)
+
+# Autoplot: color according to cluster
+autoplot(iris_k, data = iris, frame = TRUE)
+
+# Autoplot: above, plus shape according to species
+autoplot(iris_k, data = iris, frame = TRUE, shape = 'Species')
+```
+
+# Maps
+We will be discussing two types, choropleths and cartographic maps.
+
+# Choropleths
+In essence we are drawing a bunch of polygons. We see the outline of the US mapped below.
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+usa <- map_data("usa")
+ggplot(usa, aes(long, lat, group = group)) + geom_polygon()
+```
+
+Since this is a ggplot graph we can even change the axes to map to a different projection. We can also plot the states.We can also plot the most populated cities.
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4, eval = FALSE}
+ggplot(usa, aes(x = long, y = lat, group = group)) +
+  geom_polygon() +
+  geom_point(data = cities, aes(group = State, size = Pop_est),
+             col = "red", shape = 16, alpha = 0.6) +
+  coord_map() +
+  theme_map()
+
+# Arrange cities
+cities_arr <- arrange(cities, Pop_est)
+
+# Copy-paste plot 1 and adapt
+ggplot(usa, aes(x = long, y = lat, group = group)) +
+  geom_polygon(fill = "grey90") +
+  geom_point(data = cities_arr, aes(group = State, col = Pop_est),
+             shape = 16, alpha = 0.6, size = 2) +
+  coord_map() +
+  theme_map() +
+  scale_color_viridis()
+```
+
+Note that the theme `theme_map` exists to create nicely formatted choropleths. 
+
+Shapefiles can be used to describe points, polylines or polygons. A single shapefile actually consists of several files, each describing a specific aspect of the overall geometry. The three core file types are:
+
+\begin{itemize}
+  \item .shp: the shape, the feature geometry itself
+  \item .shx: the shape index, a positional index
+  \item .dbf: the attribute, attributes for each shape arranged in columns
+\end{itemize}
+
+The prefix name of these files must be consistent and they must be kept in the same directory. Note that building these maps is computationally heavy, so it can take some time before you see your results. Use `readOGR` to read in the shapefiles and store the data. It takes two arguments:
+
+\begin{itemize}
+  \item \verb`dsn` data source name, the folder of the shapefiles in quotations
+  \item \verb`layer` the level you are interested in in quotations
+\end{itemize}
+
+You then use the function `fortify` to convert the shape object into a data frame.
+
+# Cartographic Map
+These are images that are either drawn such as topographical maps that depict altitude or infrastructure, or photographic such as satellite maps, or a hybrid of the two. We can use the functions from `ggmap`. `ggmap` proivdes the `get_map` function to access Google Maps. Only one argument, `location` is essential. Other than that, there are a bunch of arguments you can set, such as `zoom`, `maptype` (how do you want your map to look?) and `source` (where to get your data from?). Below we have shown a Google style map focussed on Berlin.
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+library(ggmap)
+def_13 <- get_map(location = "Berlin, Germany", zoom = 13)
+ggmap(def_13, extent = "device")
+```
+
+There are also multiple themes associated with these maps. The watercolor style and plain black and white style found in the `stamen` package are drawn below. Hybrid maps depict the road networks as well as the satellite images.
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+wc_13 <- get_map(location = "Berlin, Germany", zoom = 13, source = "stamen", maptype = "watercolor")
+ggmap(wc_13, extent = "device")
+
+ton_13 <- get_map(location = "Berlin, Germany", zoom = 13, source = "stamen", maptype = "toner")
+ggmap(ton_13, extent = "device")
+
+hyb_13 <- get_map(location = "Berlin, Germany", zoom = 13, source = "stamen", maptype = "hybrid")
+ggmap(hyb_13, extent = "device")
+```
+
+We can also get just the satellite images in isolation from Google.
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+sat_13 <- get_map(location = "Berlin, Germany", zoom = 13, source = "google", maptype = "satellite")
+ggmap(sat_13, extent = "device")
+```
+
+To get the latitudes and longitudes of places we can use the `geocode` function. 
+
+Instead of defining your cartographic map based on a general location, you can define a bounding box around specific coordinates. You can use the `make_bbox` function. Note that since `ggmap` creates a ggplot we can add layers such as points or polygons to our base map.
+
+# Animations
+
+Instead of saving individual plots and turning them into a movie format such as a gif we can use the `animation` package. `gg_animate` acts as a wrapper for the `animation` package when using other `ggplot` objects. The frame aesthetic is what we're changing between each stilt of the gif. We can also change the length of time a stilt is in place by altering the `interval` argument in the `gg_animate` function. 
+
+```{r warning = FALSE, message = FALSE, fig.width = 6, fig.height = 4}
+# Update the static plot
+p <- ggplot(Vocab, aes(x = education, y = vocabulary,
+                       color = year, group = year,
+                       frame = year, cumulative = TRUE)) +
+  stat_smooth(method = "lm", se = FALSE, size = 3)
+
+# Call gg_animate on p
+gg_animate(p, interval = 1.0)
+```
+

@@ -1,0 +1,421 @@
+---
+title: "Introduction to data table Package"
+author: "Angela Kang"
+date: "December 24, 2017"
+output: pdf_document
+---
+
+```{r echo = FALSE, message = FALSE}
+library(data.table)
+```
+
+# Chapter 1
+
+## Introduction
+
+A data.table is a data.frame which is a set of columns that can be of different type but must be of the same length. The goal of data.table are:
+
+\begin{enumerate}
+  \item Reduce programming time (fewer function calls, less variable name repetition)
+  \item Reduce compute time (fast aggregation, update by reference)
+\end{enumerate}
+
+data.table enables ordered joins which are useful for time series. 
+
+*Aside*: there are three main things to remember about types in `R`,
+
+```{r}
+# 1. numeric vs. integer
+typeof(1)
+typeof(1L)
+
+# 2. logical vs integer
+typeof(NA)
+typeof(NA_integer_)
+
+# 3. Character columns are preferred due to R's global cache
+```
+
+The general form of a data.table call is below,
+
+```{r eval = FALSE}
+DT[i, j, by]
+```
+
+The above can be read as: "Take DT, subset rows using *i*, then calculate *j* grouped by *by*"
+The i is analogous to WHERE, j to SELECT and by to BY statements in SQL.
+
+When creating a data.table there can be some recycling - shorter columns will be repeated to match the length of the longest column as shown below. The vector for `B` is repeated twice and the logical for `D` is repeated 6 times.
+
+```{r}
+DT <- data.table(A = 1:6, B = c("a", "b", "c"), C = rnorm(6), D = TRUE)
+DT
+```
+
+## Selecting Rows (i)
+
+To select rows of DT we can set the *i* "argument".
+
+```{r}
+DT[3:5,]
+```
+
+Note that `.N` can be used in the *i* argument to designate the number of rows in the data.table.
+
+```{r}
+DT[3:(.N - 1)]
+```
+
+data.table offers the advantage over a data frame that a *j* "argument" does not need to be provided at all so the below returns the same as above.
+
+```{r}
+DT[3:5]
+```
+
+## Selecting Columns (j)
+
+To select columns of DT we can set the *j* "argument". Notice the use of `.()` which is an alias for `list()` and they mean the same in data.tables.
+
+```{r}
+DT[,.(B,C)]
+```
+
+We can also create columns from pre-existing ones and select them.
+
+```{r}
+DT[, .(Total = sum(A), Mean = mean(C))]
+```
+
+We can actually throw anything into *j*, it does not have to return a value.
+
+```{r fig.height = 4, fig.width = 6}
+DT[, plot(A, C)]
+```
+
+Note that `plot` did not have to surrounded by the `.()` syntax since we use it as a side effect and returns the value `NULL`. We can actually have multiple expressions wrapped in curly braces.
+
+```{r fig.height = 4, fig.width = 6}
+DT[, {print(A); hist(C); NULL}]
+```
+
+## Group Results (by)
+
+To group results the *by* "argument" can be set. Notice that groups are listed in the order they are encountered.
+
+```{r}
+DT[, .(MySum = sum(A), MyMean = mean(A)), by = .(B)]
+```
+
+The *by* "argument" can also be set using a function. The below groups by odd and even numbers.
+
+```{r}
+DT[, .(MySum = sum(C)), by = .(Grp = A%%2)]
+```
+
+Since we just have one item in *j* and *by* the `.()` syntax does not need to be used if you do not care for the variable names.
+
+```{r}
+DT[, sum(C), by = A%%2]
+```
+
+# Chapter 2
+
+## Chaining
+
+Suppose we had the following data.table and we would like to have the new table `ans` ordered by the column `A`. 
+
+```{r}
+DT <- data.table(A = c("c","b","a"), B = 1:6)
+
+ans <- DT[, sum(B), by = A]
+ans[order(A)]
+```
+
+Instead of performing the operation after `ans` is created, we can do it in one statement with chaining.
+
+```{r}
+ans <- DT[, sum(B), by = A[order(A)]]
+```
+
+For reverse order the following adjustment can be made.
+
+```{r}
+DT[, sum(B), by = A[-order(A)]]
+```
+
+Putting all *i*, *j*, and *by* arguments together.
+
+```{r}
+DT <- data.table(x = c(rep(2, 2), rep(1, 3)),
+                 y = 6:10)
+DT[2:4, z := sum(y), by = x]
+DT
+```
+
+## Subset of Data
+
+Suppose we had to compute the median of each column in a data.table. This could be quite repetitive to write in the *j* "argument". data.table package includes a variable called `.SD` or "Subset of Data" which itself is a data.table. `.SD` holds the values of all columns except the one specified in the *by* "argument". The below calls are equivalent.
+
+```{r}
+DT <- as.data.table(iris)
+
+DT[, .(Sepal.Length = median(Sepal.Length),
+       Sepal.Width = median(Sepal.Width),
+       Petal.Length = median(Petal.Length),
+       Petal.Width = median(Petal.Width)),
+   by = Species]
+
+DT[, lapply(.SD, median), by = Species]
+```
+
+Note that the `lapply` statement is not wrapped by the `.()` alias since `lapply` already returns a list.
+
+`.SDcols` specifies the columns of the data.table that are included in `.SD`. Using `.SDcols` allows you to apply a function to all rows of a data.table, but only to some of the columns. Supose we only wanted the median length and width of sepals in our data.table. The call would then be adjusted.
+
+```{r}
+DT[, lapply(.SD, median), .SDcols = 1:2, by = Species]
+```
+
+## Using Operator := in j Argument
+
+The `:=` operator updates the table by reference. Suppose we had the following data.table.
+
+```{r}
+DT <- data.table(x = c(rep(1, 3), rep(2, 2)),
+                 y = 6:10)
+DT
+```
+
+Then observe the following. Columns `x` and `z` are set using the reverse of `x` and `10:6` respectively. This actually changes the data.table instead of simply printing a view.
+
+```{r}
+DT[, c("x", "z") := .(rev(x), 10:6)]
+DT
+```
+
+If we are only calling one column then the call can be simplified.
+
+```{r}
+DT[, a := z]
+DT
+```
+
+To remove columns by reference we use `NULL`. Note that when deleting a column the entire column must be removed not just select rows. In addition, columns can be referred by number instead of column name. 
+
+```{r}
+DT[, c("y", "z") := NULL]
+DT
+```
+
+If instead we had a list of variables we need to make sure to include brackets around the vector name so data.table doesn't try looking for that variable in the data.table.
+
+```{r echo = FALSE}
+DT <- data.table(x = c(rep(2, 2), rep(1, 3)),
+                 y = 6:10,
+                 z = 10:6, 
+                 a = 10:6)
+```
+
+```{r}
+MyCols = c("y", "z")
+
+# This would return an error since no MyCols variable exists in DT
+# DT[, MyCols := NULL]
+
+# This is the correct call
+DT[, (MyCols) := NULL]
+DT
+```
+
+Functional `:=` is just another way to lay out multiple assignments so you can get the values along with the column names and it's a little easier to read.
+
+```{r}
+DT[, ':=' (y = 6:10, z = 1)]
+DT
+```
+
+## Using set()
+
+Suppose we need to repeated update a column of a data.table. We may be tempted to use a for loop with the `:=` operator.
+
+```{r}
+DT <- data.table(x = 1:5, y = c(1, 8, 1, 1, 1), z = c(2, 5, 4, 2, 3))
+
+for (i in 1:5) DT[i, z:= i + 1]
+```
+
+A better alternative is to use `set()` which is a loopable low-overhead version of `:=`. Note that `set()` cannot handle grouping operations. The structure of the `set()` function is: `set(DT, index, column, value)`. Where `index` is the index used in the loop, `column` is the column(s) you wish to update in the loop, `value` is how the column(s) should be updated.
+
+```{r eval = FALSE}
+DT <- data.table(x = 1:5, y = c(1, 8, 1, 1, 1), z = c(2, 5, 4, 2, 3))
+
+for (i in 1:5) set(DT, i, 3L, i+1)
+```
+
+The function `setnames()` can be used to set or modify columns of a data.table by reference. If we had the below data.table and we wanted to rename column `y` to be `z`, we would use the `setnames()` function. No new data.tables are created.
+
+```{r}
+DT <- data.table(x = 1:5, y = letters[1:5])
+setnames(DT, "y", "z")
+```
+
+The function `setcolorder()` switches the order of columns by reference. If we wanted our new column `z` to come before `x`,
+
+```{r}
+setcolorder(DT, c("z", "x"))
+```
+
+# Chapter 3
+
+## Indexing
+
+When data.tables are created, an index is automatically created. So the following does not actually vector scan. They create an index automatically (by default) on `A` the first time you use column `A`.
+
+```{r eval = FALSE}
+DT[A == "a"]
+DT[A %in% c("a", "c")]
+```
+
+The following will be much quicker to run since we are calling the column for the second time.
+
+```{r eval = FALSE}
+DT[A == "b"]
+```
+
+## Keys
+
+Sometimes we would like to set a key manually on a data.table. Suppose we wanted to set the key to column `A` in `DT`, then we could simply use the function `setkey()`. This sorts the data by the column we specified and changes the table by reference - we did not have to assign the results back to the data.table `DT`.
+
+```{r}
+DT <- data.table(A = c("c","b","a"),
+                 B = 1:6)
+setkey(DT, A)
+DT
+```
+
+It's easy to check the key of data.table.
+
+```{r}
+key(DT)
+```
+
+We can think of keys as row names. If we wanted to find all the rows with "b" as its A column we could simply use the below call.
+
+```{r}
+DT["b"]
+```
+
+Note that if we tried to do this with a data frame it would return an error.
+
+By default, when calling by keys it would return all rows with the key value. We can specify which row we want returned by setting the `mult` argument.
+
+```{r}
+DT["b", mult = "first"]
+DT["b", mult = "last"]
+```
+
+We can also return on multiple keys. Note that `NA` is returned for the key "d" since it does not exist in `DT`.
+
+```{r}
+DT[c("b","d")]
+```
+
+We can control this by setting the argument `nomatch`. If `nomatch = 0` then only matching rows are returned. `nomatch = NA` is the default.
+
+```{r}
+DT[c("b","d"), nomatch = 0]
+```
+
+We can set multiple columned keys. Suppose our new key is both column `A` and `B`. 
+
+```{r}
+DT <- data.table(A = c("c","b","a"),
+                 B = c(4, 1, 6, 3, 5, 2),
+                 C = 1:6)
+setkey(DT, A, B)
+DT
+```
+
+Then when calling for specific rows the calls look like the following. Make sure to use the `.()` notation. 
+
+```{r}
+DT[.("b",5)]
+```
+
+The second call returns an `NA` since it is not found in the data.table.
+
+```{r}
+DT[.("b",6)]
+```
+
+We can also look based on the first column of the key.
+
+```{r}
+DT[.("b")]
+```
+
+As an aside the statement `by = .EACHI` allows you to run *j* for each group in which each item in *i*. Suppose we wanted the first and last rows that had "a" as its column A.
+
+```{r}
+DT[.("a"), .SD[c(1, .N)], by = .EACHI]
+```
+
+If we wanted to print each group before returning the first and last row we could run the following.
+
+```{r eval = FALSE}
+DT[c("b","a"), {print(.SD); .SD[c(1, .N)]}, by = .EACHI]
+```
+
+## Rolling Joins
+
+Ordered joins are useful when dealing with ordered data. This is best explained using an example. Suppose we had the data.table from the above with a two-column key. As seen from above, calling it on a value that is not existent would return `NA`.
+
+```{r}
+DT
+DT[.("b",4)]
+```
+
+We can set the argument `roll` to `TRUE` and it would set it to the observed value of column of `B` that's smaller than 4 which exists in the data.frame. In this case it is 2.
+
+```{r}
+DT[.("b", 4), roll = TRUE]
+```
+
+Another option is to set `roll = "nearest"` which would see which value of `B` that exists is closest to 4. In this case it is 5.
+
+```{r}
+DT[.("b", 4), roll = "nearest"]
+```
+
+To always roll forwards we set `roll = +Inf`, and to always roll backwards we set `roll = -Inf`.
+
+```{r}
+DT[.("b", 4), roll = +Inf]
+DT[.("b", 4), roll = -Inf]
+```
+
+It is also possible to set a rolling window.
+
+```{r}
+DT[.("b", 4), roll = +2]
+DT[.("b", 4), roll = -2]
+```
+
+It is also possible to control the rolling behavior of ends. Recall from above if we set `roll = TRUE` we get the following behavior.
+
+```{r}
+DT
+DT[.("b", 7:8), roll = TRUE]
+```
+
+We get the value 5 for the column `C` since it's the last observation that corresponds to the column `B` that's smaller 7 and 8. We can stop this rolling forward behavior by setting the argument `rollends = FALSE`.
+
+```{r}
+DT[.("b", 7:8), roll = TRUE, rollends = FALSE]
+```
+
+To carry the first observation backwards the argument can be set to `rollends = TRUE`.
+
+```{r}
+DT[.("b", 7:8), roll = TRUE, rollends = TRUE]
+```

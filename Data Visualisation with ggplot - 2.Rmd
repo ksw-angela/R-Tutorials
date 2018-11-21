@@ -1,0 +1,250 @@
+---
+title: "Data Visualisation with ggplot - 2"
+author: "Angela Kang"
+date: "September 7, 2017"
+output: pdf_document
+---
+
+```{r warning = FALSE, echo = FALSE, message = FALSE}
+library(ggplot2)
+library(MASS)
+library(dplyr)
+```
+
+
+# CHAPTER 2
+# Statistics Layer
+There are two categories of function:
+\begin{enumerate}
+  \item called from within a geom
+  \item called independently
+\end{enumerate}
+
+# Stats inside geoms
+
+Note that under the hood, `geom_histogram`, `geom_bar`, and `geom_freqpoly` calls `stat_bin` as seen below,
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+par(mfrow = c(1,3))
+p <- ggplot(iris, aes(x = Sepal.Width))
+p + geom_histogram()
+p + geom_bar()
+p + stat_bin()
+```
+
+`geom_smooth` calls `stat_smooth`, the grey outline below is by default the 95% confidence interval,
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+ggplot(iris, aes(x = Sepal.Length, y = Sepal.Width, col = Species)) +
+  geom_point() +
+  geom_smooth()
+```
+
+We can remove the above confidence interval by setting `se = FALSE` in the `geom_smooth` function. By default you can also notice that the models are bound by the range of our data. If we wanted a predictive model and extend our range we can set `fullrange = TRUE` in the `geom_smooth` function. We can also choose our modelling method in the `method = ` argument.
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+ggplot(iris, aes(x = Sepal.Length, y = Sepal.Width, col = Species)) +
+  geom_point() +
+  geom_smooth(method = "lm", fullrange = TRUE) +
+  geom_smooth(aes(group = 1, col = "All"), method = "lm", fullrange = TRUE)
+```
+
+We can see that in addition to the sepal width vs sepal length by species, we also plotted the overall pattern via the second `geom_smooth` call. Note the mapping `col = "All"` in the second `geom_smooth` call to give it the appropriate label in the legend.
+
+# Stats outside geoms
+To plot the min, max, and the mean for categorical variables we can use the `stat_summary` function,
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+library(Hmisc)
+ggplot(iris, aes(x = Species, y = Sepal.Length)) +
+  stat_summary(fun.y = mean, geom = "point") +
+  stat_summary(fun.data = mean_sdl, fun.args = list(mult = 1),
+               geom = "errorbar", width = 0.1)
+```
+
+Similarly to plot the 95% confidence interval we can use `fun.data = mean_cl_normal` instead.
+Other useful stat functions are as follows,
+\begin{itemize}
+  \item \verb`stat_summary` summarize y values at distinct x values
+  \item \verb`stat_function` summarize y values from a function of x values
+  \item \verb`stat_qq` perform calculations for a quantile-quantile plot
+\end{itemize}
+
+When we look at the mammals dataset in the MASS package we see that the log-log relationship between brain and body weight is linear.
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+plot(brain~body, data = mammals, log = "xy")
+abline(lm(log(brain, base = 10)~log(body, base = 10), data = mammals), col = "red")
+```
+
+We create a histogram of the body weight and overlay a normal distribution density curve,
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+mam.new <- data.frame(body = log10(mammals$body))
+ggplot(mam.new, aes(x = body)) +
+  geom_histogram(aes(y = ..density..)) +
+  geom_rug() +
+  stat_function(fun = dnorm, colour = "red",
+                arg = list(mean = mean(mam.new$body),
+                           sd = sd(mam.new$body)))
+```
+
+Notice that the function `geom_rug` adds those little tick marks at the bottom to see the actual distribution. If we wanted to check how well our data follows a normal distribution we could use the QQ plot. Unfortunately, there is no way of creating the QQ line so we must do it ourselves.
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+mam.new$slope <- diff(quantile(mam.new$body, c(0.25, 0.75)))/
+  diff(qnorm(c(0.25, 0.75)))
+mam.new$int <- quantile(mam.new$body, 0.25) -
+  mam.new$slope * qnorm(0.25)
+ggplot(mam.new, aes(sample = body)) +
+  stat_qq() +
+  geom_abline(aes(slope = slope, intercept = int), col = "red")
+```
+
+# Coordinates layer
+Control the dimensions of your plot. These functions are written as `coord_`, with the most popular being `coord_cartesian` which control the x y axis of our plot. If we want to zoom in to a plot we can do one of many things,
+\begin{itemize}
+  \item \verb`scale_x_continuous(limits = ...)`
+  \item \verb`xlim` or `ylim`
+  \item \verb`coord_cartesian(xlim = ...)`
+\end{itemize}
+
+Suppose we originally had the following plot with smoothing curves. 
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+iris.smooth <- ggplot(iris, aes(x = Sepal.Length,
+                                y = Sepal.Width, 
+                                col = Species)) +
+  geom_point(alpha = 0.7) + geom_smooth()
+iris.smooth
+```
+
+If we wanted to create a new plot with only points in the left we can do the following. Note that there are a bunch of warning messages we get from this statement. This is because we have filtered our data, there's not enough to create the loess curve for the virginica species.
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+iris.smooth + scale_x_continuous(limits = c(4.5, 5.5))
+```
+
+An alternative to calling `scale_x_continuous` is using `xlim`, but this is not quite as flexible since we can't specify other arguments.
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+iris.smooth + xlim(c(4.5, 5.5))
+```
+
+If we truly wanted to zoom in, we would use the function `coord_cartesian`. We can see below that it preserves the smoothing line for virginica as well. We can also see that we have cut off the buffer section in the beginning and end of the points, so we may want to call this function if we want clean axes.
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+iris.smooth + coord_cartesian(xlim = c(4.5, 5.5))
+```
+
+We can set the aspect ratio of a plot with `coord_fixed` or `coord_equal`. Both use `aspect = 1` as a default. A 1:1 aspect ratio is most appropriate when two continuous variables are on the same scale.
+
+The `coord_polar` function converts a planar x-y cartesian plot to polar coordinates. This can be useful if you are producing pie charts. Usually we set `theta = "y"` within the function to tell it that we are transforming the y axis into polar coordinates.
+
+# Facets
+The idea is that we can take a complex plot and plot them separately on multiple plots but on the same scale and axes. In other words, the primary function for facets is to add another variable to our plot and aids in visual perception. The function `facet_grid` can help us do this where the formula that we enter into it takes the form rows ~ columns. 
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+# Basic scatter plot:
+p <- ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point()
+
+# Separate rows according to transmission type, am
+p + facet_grid(am ~ .)
+
+# Separate columns according to cylinders, cyl
+p + facet_grid(. ~ cyl)
+
+# Separate by both columns and rows 
+p + facet_grid(am ~ cyl)
+```
+
+# Themes
+The themes layer controls all non-data ink on your plot - visual elements not part of your data. There are three main types of visual elements, text, line, and rectangle and each have a corresponding `element_` function. The `theme` function has a wide number of arguments. We can alter the arguments using the appropriate element function. Note that there is a level of hierarchy to the arguments. If we change the `text` argument all arguments that have to do with text e.g. `title`, `plot.title`, `legend.title`, etc. are also affects. The same thing goes for `line` as well as `rect` arguments. There are levels to the hierarchy which can be seen in the help documentation. We can also use `element_blank` to remove ink. 
+
+To remove the legend we can set `legend.position = "none"`. We can also control the spaces between facets. If we wanted no excess margin space we can set `plot.margin = unit(c(0,0,0,0), "cm")`. Note that the `unit` function requires the `grid` package to be loaded.
+
+If we would like to set a default theme, just like the `par` function in base `R`, the `theme_update` function in `ggplot` sets a global option. Just like with our normal `theme` function, the `theme_update` function can be assigned to a variable.
+
+If we would like to set a theme to automatically apply to every graph in the beginning of our script, we can use the `theme_set` function. Note that the default one provided by `ggplot` is `theme_grey` and can be reset using `theme_set(original)`. There is a separate package called `ggthemes` which contains preset templates.
+
+# Common Pitfalls in Data Visualisation
+**Best Practices: Bar Charts**
+Here we are looking at the sleeping patterns of mammals by their eating habits. The grey bars show the average sleeping time by eating habit, and the black lines show the values one standard deviation below and above the mean. There are some problems with using this representation,
+\begin{itemize}
+  \item It doesn't tell us how many data points belong to each group - it must be written under the group, or in the legend
+  \item It also suggests that the data is normally distributed
+  \item Bars give the impression that there's data where there is no data - there are for sure no mammals that sleep 0 hours a day yet the bars begin showing data at 0 even though it's meaningless
+\end{itemize}
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+tidy.msleep <- filter(msleep, !is.na(vore))
+d <- ggplot(tidy.msleep, aes(x = vore, y = sleep_total)) +
+  scale_y_continuous("Total sleep time (h)",
+                     limits = c(0, 24),
+                     breaks = seq(0, 24, 3),
+                     expand = c(0, 0)) +
+  scale_x_discrete("Eating habits") +
+  theme_classic()
+d + stat_summary(fun.y = mean, geom = "bar", fill = "grey50") + 
+  stat_summary(fun.data = mean_sdl, fun.args = list(mult = 1), geom = "errorbar", width = 0.2)
+```
+
+It is for these reasons that we generally avoid bar plots. An alternative to showing this data would be just simply plotting the data like below,
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+d + geom_point(alpha = 0.6, position = position_jitter(width = 0.2))
+```
+
+We can now clearly see some patterns in our data. One thing we can point out is that we have very few data points for insectivores, and that the data seems bimodal, but we will need more data for more conclusive evidence. The omnivore data also seems to be skewed to lower values. We can also plot the standard deviations using the geom errorbar or geom pointrange.
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+p <- d + geom_point(alpha = 0.6, position = position_jitter(width = 0.2))
+p + stat_summary(fun.y = mean, geom = "point", fill = "red") +
+  stat_summary(fun.data = mean_sdl, fun.args = list(mult = 1), geom = "errorbar", width = 0.2, col = "red")
+p + stat_summary(fun.data = mean_sdl, fun.args = list(mult = 1), col = "red")
+```
+
+Or we could have just as easily shown the summary statistics on their own without the data points. 
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+d + stat_summary(fun.y = mean, geom = "point") +
+  stat_summary(fun.data = mean_sdl, fun.args = list(mult = 1), geom = "errorbar", width = 0.2)
+```
+
+**Best Practices: Pie Charts**
+When we plot a pie chart we're trying to answer the question: what proportion of a categorical variable is represented by each subgroup? We are trying to find the parts of a whole, i.e. whether there are populations that are under or over represented. However, it can be difficult to decipher the proportions clearly. The better alternative is to simply keep the stacked bar chart in normal x y coordinates and not convert it to polar coordinates.
+
+A great swiss army knife of an exploratory plot is the SPLOM (scatter plot matrix).
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+GGally::ggpairs(iris)
+```
+
+**Best Practices: Heat Maps**
+While heat maps may be a perfectly reasonable method to visualize spatial datasets, it is important to note that mapping a continuous variable to a gradient of colors can make it difficult for us to distinguish values since our color perception is greatly impacted by the surrounding colors. We take a look at the barley yield dataset and first visualize using a heat map. We can see even for this small dataset it's very difficult to see any patterns!
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+library(lattice)
+ggplot(barley, aes(x = year, y = variety, fill = yield)) + geom_tile() + facet_wrap(~site, ncol = 1)
+```
+
+A better alternative is to simply plot the points on a common scale as seen below.
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+ggplot(barley, aes(x = yield, y = variety, col = year)) + geom_point() + facet_wrap(~site, ncol = 1)
+```
+
+We can see that the data is already organized to show a common trend - Grand Rapids, in general, has the lowest yield, and Waseca has the best. In addition, we can see that some farms had a big difference in its yields between the two years, and others did not. While the above visualisation could be good for exploratory purposes, it still doesn't clearly address a key question, how have the yields changed over the years? To better answer that question we can plot a parallel chart,
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+ggplot(barley, aes(x = year, y = yield, col = variety, group = variety)) + geom_line() + facet_wrap(~site, nrow = 1)
+```
+
+We can see that we lose some of the easy perception across sites, but we can see the yield changes by year better. If instead we were more interested in the yields by sites we can collapse the plot and also add the summary statistics of standard deviation. 
+
+```{r fig.height=4, fig.width=6, warning = FALSE, message = FALSE}
+ggplot(barley, aes(x = year, y = yield, col = site, group = site, fill = site)) +
+  stat_summary(fun.y = mean, geom = "line") + 
+  stat_summary(fun.data = mean_sdl, fun.args = list(mult = 1), geom = "ribbon", col = NA, alpha = 0.1)
+```
+
+# Mosaic Plots
+Recall that if we have two categorical variables, then the chi-square test aims to see whether the proportions of any combination of the two variables is significantly different from the assumption that all combinations of the variables are equal. Mosaic plots are a way to visualize this. We can plot each of the squares which represent a combination of the variables a gradient scale which represents the residuals of the chi-square test. 

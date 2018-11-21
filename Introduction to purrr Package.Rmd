@@ -1,0 +1,237 @@
+---
+title: "Writing Functions in R"
+author: "Angela Kang"
+date: "August 27, 2017"
+output: pdf_document
+---
+
+# How should you write a function?
+As a rule of thumb, when faced with a problem which will force you to repeat the same operation three times it would be more efficient to spend to time to write a function. In general, there are five main steps to writing a function:
+\begin{enumerate}
+  \item Start with a simple case of the problem - it should be concrete and you should know the answer so you can verify the output
+  \item Get a working snippet of code - solve the simple case
+  \item Rewrite to use temporary variables
+  \item Rewrite for clarity - this will become the body of the function
+  \item Test the function
+\end{enumerate}
+
+# Writing Good Functions
+To make code understandable to not only `R` but other people there are some naming conventions that one should follow.
+\begin{itemize}
+  \item pick a consistent style for long names
+  \item avoid using names that belong to pre-existing variables or functions in `R`
+  \item use verbs that are descriptive for function names
+  \item arguments should generally be nouns and common short names where appropriate
+  \begin{itemize} 
+    \item \verb`x`, \verb`y`, \verb`z` for vectors
+    \item \verb`df` for data frame
+    \item \verb`i`, \verb`j` for indices
+    \item \verb`n` for length or rows
+    \item \verb`p` for number of columns
+  \end{itemize}
+  \item arguments should be in order of data arguments, then detail arguments with sensible defaults
+\end{itemize}
+
+\bigskip
+
+The official way to supply simple diagnostic information is the `message()` function
+
+# Safer Way to Create a Sequence
+We often use a sequence for loops to iterate over e.g. `i in 1:ncol(df)`, but what if `df` is empty? As a better alternative, the function `seq_along(df)` which handles the empty case better, can be used.
+
+# Introduction to the purrr Package
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+library(purrr)
+```
+Part of the tidyverse, the `purrr` package provides a way to easily build loops. The first type of function we look at are the `map(.x, .f, ...)` functions. The `...` argument in the `map` functions refer to additional arguments that the function `.f` may require you to input. These can simply be added to the call as `map(.x, .f, arg1, arg2, ...)`. All `map` functions work the same way. They all:
+\begin{enumerate}
+  \item loop over a vector \verb`.x`
+  \item do something to each element via \verb`.f`
+  \item return the results
+\end{enumerate}
+
+The only way these functions differ is by the type of data they return. There is one `map` function for each type of vector,
+\begin{itemize}
+  \item \verb`map()` returns a list
+  \item \verb`map_dbl()` returns a double vector
+  \item \verb`map_lgl()` returns a logical vector
+  \item \verb`map_int()` returns an integer vector
+  \item \verb`map_chr()` returns a character vector
+\end{itemize}
+
+\bigskip
+
+Note that if a data frame is fed as the `.x` argument for a `map` function, it will iterate over the columns. If the `.x` argument is a list, it will iterate over each element of the list. Note that the output will still remain consistent depending on which `map` function you use.
+
+\bigskip
+
+There are a few benefits to using the `purrr` package,
+\begin{itemize}
+  \item shortcuts for specifying \verb`.f`
+  \item more consistent than \verb`sapply` or \verb`lapply` in their output
+\end{itemize}
+
+\bigskip
+
+Usually when writing an anonymous function inside functions such as `sapply` or `lapply` we need to specify the arguments as seen below,
+
+```{r eval = FALSE}
+lapply(df, function(x) sum(is.na(x)))
+```
+
+Instead we can forgo this step by using `map` functions, replacing any arguments with a `.`. The below code will do the same thing as the above code.
+
+```{r eval = FALSE}
+map(df, ~ sum(is.na(.)))
+```
+
+Another shortcut involves subsetting lists. Suppose we had the following,
+
+```{r}
+list_of_results <- list(
+  list(a = 1, b = "A"),
+  list(a = 2, b = "C"),
+  list(a = 3, b = "D")
+)
+```
+
+and we wanted the first value of each sublist (1, 2, 3). Then instead of using the following and specifying the entire anonymous function we can simply call the name of the variable ("a") or the position in each sublist (1). The code is shown below,
+
+```{r}
+# Specifying entire anonymous function
+sapply(list_of_results, function(x) x[["a"]])
+
+# Shortcut by name of variable
+map_dbl(list_of_results, "a")
+
+# Shortcut by position
+map_dbl(list_of_results, 1)
+```
+
+\bigskip
+
+# Maps Over Multiple Arguments
+There are two `map` functions that we can use when iterating over multiple arguments,
+\begin{itemize}
+  \item \verb`map2(.x, .y, .f)` iterates over two arguments \verb`.x` and \verb`.y`
+  \item \verb`pmap(.l, .f)` iterates over as many arguments as specified in the list \verb`.l`
+  \item \verb`invoke_map(.l, .x)` iterates over the list of functions \verb`.l` applying necessary arguments found in \verb`.x`
+\end{itemize}
+Just like the regular `map` function, each of the above have different versions depending on which data type you would like to output. Suppose we would like to create random samples from the normal distribution with different sample sizes as well as different means.
+
+```{r eval = FALSE}
+# Without using map functions
+rnorm(5, mean = 1)
+rnorm(10, mean = 5)
+rnorm(20, mean = 10)
+
+# Using map functions
+map2(list(5, 10, 20), list(1, 5, 10), rnorm)
+```
+
+Now suppose we also wanted to vary the standard deviations of our samples.
+
+```{r eval = FALSE}
+# Without using map functions
+rnorm(5, mean = 1, sd = 0.1)
+rnorm(10, mean = 5, sd = 0.5)
+rnorm(20, mean = 10, sd = 0.1)
+
+# Using map functions
+pmap(list(n = (5, 10, 20), 
+          mean = (1, 5, 10),
+          sd = (0.1, 0.5, 0.1)), rnorm)
+```
+
+Now suppose instead of finding samples from just the normal distribution we also wanted it from the uniform as well as the exponential distribution.
+
+```{r eval = FALSE}
+# Without using map functions
+rnorm(5)
+runif(5)
+rexp(5)
+
+# Using map functions
+invoke_map(list(rnorm, runif, rexp), n = 5)
+```
+
+\bigskip
+
+# Walk for Side Effects
+Sometimes we would like to iterate over *side effects* - things that happen beyond the results of a function. Examples of side effects include: printing output, plotting, and saving files to disk. For these we use the `walk` function which works exactly like `map`. They even have the same variants such as `walk2` and `pwalk` for multiple arguments. However, unlike `map` the return value of the function is not of importance (in fact `walk` functions return the original data) and thus we will not find a `walk_dbl` function.
+
+# Adverbs for Unusual Output
+A feature of the `map` functions is that if any of the iterations fail, the entire function will fail. To ensure the function always succeeds, `safely(.f)` can be used within the map function. The output will be a list of success and failures. Each element in the list represents an iteration consisting of a sublist of two elements, `result` and `error`. If there were no errors for a particular iteration, the `error` variable for that iteration will be `NULL`.
+Descriptions of all adverb functions are listed below.
+\begin{itemize}
+  \item \verb`safely` captures both the successful results and errors in the form of a list
+  \item \verb`possibly` always succeeds by replacing errors with a default value
+  \item \verb`quietly` captures printed output, message, and warnings instead of capturing errors
+\end{itemize}
+
+# Building Robust Functions
+To avoid errors, we can make use of some functions. One of these is `stopifnot(cond)`. While this is a good quick check for whether the function will return an error, the messages that it produces are not that insightful or user-friendly. To create more insightful error messages we may use a conditional with the `stop()` function. Instead of telling us what we have inputted, the error message should tell us what we should be inputting instead. An example is found below.
+
+```{r eval = FALSE}
+x <- 1:10
+
+# stopifnot does not create useful error message
+stopifnot(is.character(x))
+
+# stop creates a useful error message
+if (!is.character(x)){
+  stop("`x` should be a character vector", call. = FALSE)
+}
+```
+
+\bigskip
+
+There are three main problems that plague `R` functions,
+\begin{enumerate}
+  \item Type-unstable functions - functions that return difference data types depending on its input
+  \item Non-standard evaluation
+  \item Hidden arguments - global options may affect the results of your functions
+\end{enumerate}
+
+\bigskip
+
+An example of a type-unstable error is using square brackets to subset a data frame. Suppose we wanted to look at the first row of a data frame. If the data frame consists of more than one row the data type outputted will be another data frame. If, instead, the data frame consisted of a single row, the data type outputted will be a vector.
+
+```{r}
+# Multiple rowed data frame
+df <- data.frame(z = 1:3, y = 2:4)
+str(df[1,])
+
+# Single rowed data frame
+df <- data.frame(z = 1:3)
+str(df[1,])
+```
+
+To mitigate this problem, we can provide the subsetting function with the argument `drop = FALSE` which will keep the output type-consistent.
+
+```{r}
+str(df[1, , drop=FALSE])
+```
+
+\bigskip
+
+In general, to avoid the problem of type-unstable functions there are a couple of things to keep in mind,
+\begin{enumerate}
+  \item Avoid using type-inconsistent functions (most commonly \verb`[` and \verb`sapply`)
+  \item Use type-consistent functions (all functions in \verb`purrr` are type-consistent)
+\end{enumerate}
+
+\bigskip
+
+The second common source of error deals with non-standard evaluation. An example is the subset function,
+
+```{r eval = FALSE}
+# the disp argument is only evaluated inside mtcars it's not found in the global environment
+subset(mtcars, disp > 400)
+```
+
+While this may save us some typing, it can be hard to distinguish whether the variable we are referring to is found within a data frame or if it was defined in the global environment. Be aware of this when creating your own functions. A common way to mitigate this is to provide warning messages if an argument is non-standard e.g. if the argument matches with a column name in the data frame if it's later used in the function. 
+
+\bigskip
+
+The last common source of error is due to hidden arguments. As a rule of thumb you should avoid writing functions with return values that depend on a global option (e.g. `stringsAsFactors`). It is, however, perfectly valid to have a side effect be controlled by a global option (e.g. how output should be printed).

@@ -1,0 +1,167 @@
+---
+title: "Introduction to dplyr Package"
+author: "Angela Kang"
+date: "August 27, 2017"
+output: pdf_document
+---
+
+# Data Manipulation with dplyr
+`dplyr` provides data in the form of a *tibble* - a special type of data frame that displays large datasets in an easy-to-view manner such as cutting off rows and columns of data that do not fit in the console. It is important to note that the package changes how `R` displays data but not the actual underlying data structure so we can manipulate a tibble just like a data frame. As an example, we will load the `hflights` package which contains commercial domestic flight data that departed Houston (IAH and HOU) in 2011.
+
+```{r, warning=FALSE, message=FALSE}
+library(dplyr)
+library(hflights)
+```
+
+We first convert the data frame into a tibble. To view the data type of each variable as well as as much of the data values as possible within our console, the `glimpse()` function is used. 
+
+```{r}
+hflights <- tbl_df(hflights)
+glimpse(hflights)
+```
+
+The `UniqueCarrier` variable represents a shortened name for the airline carrier for each flight. For easy reading we would like to assign the full names to a new variable `Carrier`. 
+
+```{r}
+# Lookup vector for airlines
+lut <- c("AA" = "American", "AS" = "Alaska", "B6" = "JetBlue", "CO" = "Continental", 
+         "DL" = "Delta", "OO" = "SkyWest", "UA" = "United", "US" = "US_Airways", 
+         "WN" = "Southwest", "EV" = "Atlantic_Southeast", "F9" = "Frontier", 
+         "FL" = "AirTran", "MQ" = "American_Eagle", "XE" = "ExpressJet", "YV" = "Mesa")
+
+# Add the Carrier column to hflights
+hflights$Carrier <- lut[hflights$UniqueCarrier]
+```
+
+Similarly, we would like to create a new variable `Code` for the full cancellation reasons based on the `CancellationCode` variable.
+```{r}
+# Lookup vector for cancellation reasons
+lut <- c("A" = "carrier", "B" = "weather", "C" = "FFA", "D" = "security", "E" = "not cancelled")
+
+# Add the Code column
+hflights$Code <- lut[hflights$CancellationCode]
+```
+
+Note that two processes above would also work for a regular data frame.
+
+\bigskip
+
+There are five main functions in the `dplyr` package:
+\begin{enumerate}
+  \item \verb`select(df, var1, var2, ...)` includes only specified columns (in this case \verb`var1` and \verb`var2`)
+  \item \verb`filter(df, cond)` includes rows where the condition \verb`cond` evaluates to \verb`TRUE`
+  \item \verb`arrange(df, byvar1, byvar2, ...)` reorders rows (in this case by \verb`byvar1` then \verb`byvar2`) from smallest to largest (for largest to smallest use \verb`desc(byvar)`)
+  \item \verb`mutate(df, newvar1, newvar2, ...)` uses data to add new columns
+  \item \verb`summarise(df, sumstat1, sumstat2, ...)` calculates summary statistics
+\end{enumerate}
+
+It is important to note that simply running the above functions will not actually change the original data. You must assign your output to a new variable to save your results. It is also clear that if the data is "tidy" (rows are observations and columns are variables), `select` and `mutate` manipulate variables, `filter` and `arrange` manipulate observations, and `summarise` manipulates groups.
+
+\bigskip
+
+There are also a few helper functions provided in `dplyr` that can be used in conjunction with the main functions listed above.
+\begin{itemize}
+  \item \verb`starts_with("X")` every name that starts with "X"
+  \item \verb`ends_with("X")` every name that ends with "X"
+  \item \verb`contains("X")` every name that contains "X"
+  \item \verb`matches("X")` every name that matches "X", where "X" can be a regular expression
+  \item \verb`num_range("x", 1:5)` the variables names x01, x02, x03, x04, and x05
+  \item \verb`one_of(x)` every name that appears in x, which should be a character vector
+\end{itemize}
+
+\bigskip
+
+Moreover, there are a few useful aggregate functions provided in `dplyr`,
+\begin{itemize}
+  \item \verb`first(x)` the first element of vector x
+  \item \verb`last(x)` the last element of vector x
+  \item \verb`nth(x, n)` the nth element of vector x
+  \item \verb`n()` the number of rows in the data.frame or group of observations that summarise() describes
+  \item \verb`n_distinct(x)` the number of unique values in vector x
+  \item \verb`group_by(df, group)` groups the data by the group variable
+\end{itemize}
+
+\bigskip
+
+An especially useful operator in the `dplyr` package (as well as all other tidyverse packages!) is the pipe, `%>%` which connects an object with a function. It makes it clearer to follow the logic of the code.
+Below are examples of code that utilises the pipe.
+
+```{r, eval = FALSE}
+# Ordered overview of average arrival delays per carrier
+hflights %>% filter(!is.na(ArrDelay) & ArrDelay > 0) 
+  %>% group_by(UniqueCarrier) 
+  %>% summarise(avg = mean(ArrDelay)) 
+  %>% mutate(rank = rank(avg)) 
+  %>% arrange(rank)
+
+# How many airplanes only flew to one destination?
+hflights %>%
+  group_by(TailNum) %>%
+  summarise(ndest = n_distinct(Dest)) %>%
+  filter(ndest == 1) %>%
+  summarise(nplanes = n())
+
+# Find the most visited destination for each carrier
+hflights %>%
+  group_by(UniqueCarrier, Dest) %>%
+  summarise(n = n()) %>%
+  mutate(rank = rank(desc(n))) %>%
+  filter(rank == 1)
+```
+
+
+# Joining Data with dplyr
+While there are few functions provided by base `R` to join data frames, the join functions provided by `dplyr` have a few benefits:
+\begin{enumerate}
+  \item Always preserve row order
+  \item Intuitive syntax
+  \item Can be applied to databases, spark, etc.
+\end{enumerate}
+
+\bigskip
+
+There are three main types of joins in `dplyr`,
+\begin{enumerate}
+  \item Mutating joins (\verb`left_join`, \verb`right_join`, \verb`inner_join`, \verb`full_join`) returns the original dataset with some columns added to it (much like the mutating functions)
+  \item Semi joins (\verb`semi_join`) filters data from the first data frame based on the second data frame
+  \item Anti joins (\verb`anti_join`) shows that data is from the first data frame not in the second data frame It can also be used to diagnose joins that could go wrong. 
+\end{enumerate}
+
+All joins follow the same format, `join(df1, df2, by = "var")` where we are joining the second data frame `df2` to the first data frame `df1` by the variable `"var"`. The by argument can also be a list of variables. If the variable name is not consistent among the datasets you must specify the two column names in the by argument of the join function as `by = ("colname1" = "colname2")`. Join functions in `dplyr` automatically join by variable names that are identical among the data frames if no `by` argument is specified. That's why you must be careful to specify the by argument if you are unsure of any overlapping variables. You may also provide a suffix argument as a suffix to your new columns.
+
+\bigskip
+
+As a simplification for joins there are also set operations we can make use of,
+\begin{itemize}
+  \item \verb`union(df1, df2)`
+  \item \verb`intersect(df1, df2)` which is analogous to \verb`semi_join` if the two data frames contain the same variables and each variable is used in the key
+  \item \verb`setdiff(df1, df2)` which is analogous to \verb`anti_join` under same conditions
+\end{itemize}
+
+\bigskip
+
+We have left out the simple case when we simply want to stick two data frames side by side, or on top of each other. Fortunately, there are binding functions available in the `dplyr` package,
+\begin{itemize}
+  \item \verb`bind_rows(df1, df2, .id)` similar to \verb`rbind`
+  \item \verb`bind_cols(df1, df2, .id)` similar to \verb`cbind`
+\end{itemize}
+
+Why not just use the base `R` functions `rbind` and `cbind`? There are a few benefits that go along with using the `dplyr` package. 
+\begin{enumerate}
+  \item It's faster
+  \item Returns a tibble
+  \item Can handle lists of data frames
+  \item .id is an option to add additional column based on which dataset the data is from
+\end{enumerate}
+
+\bigskip
+
+`dplyr` provides functions to create data frames, \verb`data_frame`, and \verb`as_data_frame` which provide us with an alternative to the base `R` functions `data.frame` and `as.data.frame` respectively. Some benefits to the functiosn provided by `dplyr` is that it mitigates some undesirable properties from the base `R` functions. For example, `data.frame` may change strings to factors, add row names, and change unusual column names. The `dplyr` function \verb`data_frame` as allows us to use values from other columns to form new columns directly. 
+
+\bigskip
+
+To check if two data frames are equal we can use the `setequal(df1, df2)` function, which returns `TRUE` if `df1` and `df2` have the same rows regardless of order, and `FALSE` otherwise. This works in contrast to the base `R` function `identical(df1, df2)` which only `TRUE` if `df1` and `df2` have the same rows in the same order.
+
+\bigskip
+
+One last thing we should be careful of is when we join data that has duplicate or missing rows and/or columns. If we have missing column names we can use \verb`rownames_to_column()` function in `library(tibble)`.
